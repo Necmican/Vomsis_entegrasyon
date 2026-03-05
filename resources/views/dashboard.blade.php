@@ -23,16 +23,15 @@
         .account-card-link { text-decoration: none; color: inherit; display: block; }
         .account-card:hover { border-color: #0d6efd !important; cursor: pointer; transform: translateY(-1px); transition: all 0.2s; }
 
-    
         .table {
             border-collapse: collapse !important; 
-            border: 2px solid #495057 !important; /* Dış çerçeve kalın ve koyu */
+            border: 2px solid #495057 !important;
             margin-bottom: 0 !important;
         }
 
         .table th, 
         .table td {
-            border: 1px solid #6c757d !important; /* İç hücre çizgileri net ve belirgin */
+            border: 1px solid #6c757d !important;
             vertical-align: middle; 
         }
 
@@ -44,7 +43,7 @@
         }
 
         .table-hover tbody tr:hover {
-            background-color: #dbe4ef !important; /* Üzerine gelince belirgin renk */
+            background-color: #dbe4ef !important; 
         }
     </style>
 </head>
@@ -54,7 +53,7 @@
     <div class="container-fluid px-4">
         <a class="navbar-brand fw-bold" href="{{ url('/dashboard') }}">🏢 Vomsis FinTech</a>
         
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-toggle="target" data-bs-target="#navbarNav">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <span class="navbar-toggler-icon"></span>
         </button>
         
@@ -63,7 +62,10 @@
                 <li class="nav-item"><a class="nav-link active" href="{{ url('/dashboard') }}">📊 Hesap Hareketleri</a></li>
                 <li class="nav-item"><a class="nav-link text-white-50" href="{{ route('payment.list') }}">💳 Sanal POS İşlemleri</a></li>
             </ul>
-            <div class="d-flex">
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-light btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#createTagModal">
+                    🏷️ Yeni Etiket Üret
+                </button>
                 <a href="{{ url('/arka-planda-cek') }}" class="btn btn-success btn-sm fw-bold">🔄 Vomsis'ten Verileri Çek</a>
             </div>
         </div>
@@ -74,7 +76,17 @@
 
     @if(session('mesaj'))
     <div class="alert alert-success shadow-sm p-3 mb-4">
-        <strong>Harika!</strong> {{ session('mesaj') }}
+        <strong>Harika!</strong> {!! session('mesaj') !!}
+    </div>
+    @endif
+
+    @if($errors->any())
+    <div class="alert alert-danger shadow-sm p-3 mb-4">
+        <ul class="mb-0">
+            @foreach($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
     </div>
     @endif
 
@@ -179,7 +191,7 @@
             </div>
             @endif
 
-            @if(isset($filteredSummaries) && $filteredSummaries->count() > 0 && (request('bank_id') || request('search') || request('type_code')))
+            @if(isset($filteredSummaries) && $filteredSummaries->count() > 0 && (request('bank_id') || request('search') || request('type_code') || request('tag_id')))
             <div class="row mb-4">
                 @foreach($filteredSummaries as $summary)
                 <div class="col-md-6 col-lg-4 mb-2">
@@ -210,7 +222,7 @@
                         <input type="hidden" name="account_id" value="{{ request('account_id') }}">
                         @endif
                         
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <input type="text" name="search" class="form-control form-control-sm" placeholder="Açıklamada ara..." value="{{ request('search') }}">
                         </div>
                         <div class="col-md-2">
@@ -221,17 +233,29 @@
                                 <option value="EUR" {{ request('currency') == 'EUR' ? 'selected' : '' }}>EUR</option>
                             </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <select name="type_code" class="form-select form-select-sm">
-                                <option value="">Tüm İşlem Tipleri</option>
+                                <option value="">İşlem Tipleri</option>
                                 @foreach($transactionTypes as $type)
                                     <option value="{{ $type->vomsis_type_id }}" {{ request('type_code') == $type->vomsis_type_id ? 'selected' : '' }}>{{ $type->name }}</option>
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-3 d-flex gap-2">
+                        <div class="col-md-3">
+                            <select name="tag_id" class="form-select form-select-sm">
+                                <option value="">Tüm Etiketler</option>
+                                @if(isset($allTags))
+                                    @foreach($allTags as $tag)
+                                        <option value="{{ $tag->id }}" {{ request('tag_id') == $tag->id ? 'selected' : '' }}>
+                                            🏷️ {{ $tag->name }}
+                                        </option>
+                                    @endforeach
+                                @endif
+                            </select>
+                        </div>
+                        <div class="col-md-2 d-flex gap-2">
                             <button type="submit" class="btn btn-primary btn-sm w-100">Filtrele</button>
-                            @if(request('search') || request('currency') || request('type_code') || request('account_id'))
+                            @if(request('search') || request('currency') || request('type_code') || request('account_id') || request('tag_id'))
                                 <a href="{{ url('/dashboard') }}{{ request('bank_id') ? '?bank_id='.request('bank_id') : '' }}" class="btn btn-outline-secondary btn-sm w-100">Temizle</a>
                             @endif
                         </div>
@@ -266,13 +290,20 @@
                         </thead>
                         <tbody>
                             @forelse($transactions as $islem)
-                            <tr class="table-row-clickable" data-bs-toggle="modal" data-bs-target="#islemModal{{ $islem->id }}">
+                            <tr class="table-row-clickable" data-bs-toggle="modal" data-bs-target="#islemModal{{ $islem->id }}" data-id="{{ $islem->id }}">
                                 <td>{{ \Carbon\Carbon::parse($islem->transaction_date)->format('d.m.Y H:i') }}</td>
                                 <td>
                                     <strong>{{ ucfirst($islem->bankAccount->bank->bank_name ?? 'Bilinmeyen') }}</strong> <br>
                                     <small class="text-muted">{{ $islem->bankAccount->account_name }} ({{ $islem->bankAccount->currency }})</small>
                                 </td>
-                                <td><span class="badge bg-secondary">{{ $islem->transactionType->name ?? 'Diğer' }}</span></td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ $islem->transactionType->name ?? 'Diğer' }}</span>
+                                    <div class="mt-1 d-flex flex-wrap gap-1">
+                                        @foreach($islem->tags as $tag)
+                                            <span class="badge" style="background-color: {{ $tag->color }}; font-size: 0.7rem;">{{ $tag->name }}</span>
+                                        @endforeach
+                                    </div>
+                                </td>
                                 <td class="text-truncate" style="max-width: 250px;">{{ $islem->description }}</td>
                                 <td class="text-end pe-4">
                                     <span class="fw-bold {{ $islem->amount > 0 ? 'text-success' : 'text-danger' }}" style="font-size: 1.05rem;">
@@ -323,6 +354,39 @@
                                                     <strong class="fs-4 {{ $islem->amount > 0 ? 'text-success' : 'text-danger' }}">
                                                         {{ $islem->amount > 0 ? '+' : '' }}{{ number_format($islem->amount, 2, ',', '.') }} {{ $islem->bankAccount->currency }}
                                                     </strong>
+                                                </li>
+                                                
+                                                <li class="list-group-item py-3 bg-white">
+                                                    <span class="text-muted d-block mb-2 fw-bold">🏷️ İşlem Etiketleri:</span>
+                                                    
+                                                    <div class="d-flex flex-wrap gap-2 mb-3">
+                                                        @forelse($islem->tags as $tag)
+                                                            <span class="badge d-flex align-items-center py-2 px-2" style="background-color: {{ $tag->color }}; font-size: 0.85rem;">
+                                                                {{ $tag->name }}
+                                                                <form action="{{ url('/islem/'.$islem->id.'/etiket-cikar/'.$tag->id) }}" method="POST" class="ms-2 m-0 p-0 d-inline">
+                                                                    @csrf
+                                                                    <button type="submit" class="btn-close btn-close-white" style="font-size: 0.5rem;" title="Bu etiketi kaldır"></button>
+                                                                </form>
+                                                            </span>
+                                                        @empty
+                                                            <span class="text-muted small">Bu işleme henüz etiket atanmamış.</span>
+                                                        @endforelse
+                                                    </div>
+
+                                                    <form action="{{ url('/islem/'.$islem->id.'/etiket-ekle') }}" method="POST" class="d-flex gap-2">
+                                                        @csrf
+                                                        <select name="tag_id" class="form-select form-select-sm" required>
+                                                            <option value="">-- Etiket Ekle --</option>
+                                                            @if(isset($allTags))
+                                                                @foreach($allTags as $tag)
+                                                                    @if(!$islem->tags->contains($tag->id))
+                                                                        <option value="{{ $tag->id }}">{{ $tag->name }}</option>
+                                                                    @endif
+                                                                @endforeach
+                                                            @endif
+                                                        </select>
+                                                        <button type="submit" class="btn btn-sm btn-primary text-nowrap fw-bold shadow-sm">+ Ekle</button>
+                                                    </form>
                                                 </li>
                                             </ul>
                                         </div>
@@ -411,6 +475,129 @@
     </div>
 </div>
 
+<div class="modal fade" id="createTagModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <form action="{{ route('tags.store') }}" method="POST">
+        @csrf 
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold text-dark" id="createTagModalLabel">🏷️ Yeni Etiket Üret</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Kapat"></button>
+        </div>
+        <div class="modal-body">
+            <div class="mb-3">
+                <label class="form-label text-muted small fw-bold">Etiket Adı</label>
+                <input type="text" name="name" class="form-control" placeholder="Örn: İade Edildi" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label text-muted small fw-bold">Etiket Rengi</label>
+                <input type="color" name="color" class="form-control form-control-color w-100" value="#0d6efd" title="Renginizi seçin" required style="height: 45px;">
+            </div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="submit" class="btn btn-primary w-100 fw-bold shadow-sm">Etiketi Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<ul id="customContextMenu" class="dropdown-menu shadow" style="display:none; position:absolute; z-index:9999; cursor: pointer;">
+    <li>
+        <a class="dropdown-item text-danger fw-bold py-2" href="#" id="downloadPdfBtn" target="_blank">
+            <i class="fas fa-file-pdf me-2"></i> PDF Olarak İndir
+        </a>
+    </li>
+    <li>
+        <a class="dropdown-item text-info fw-bold py-2" href="#" id="viewBtn" target="_blank">
+            <i class="fas fa-eye me-2"></i> Görüntüle
+        </a>
+    </li>
+    <li>
+        <a class="dropdown-item text-success fw-bold py-2" href="#" id="printBtn" target="_blank">
+            <i class="fas fa-print me-2"></i> Yazdır
+        </a>
+    </li>
+    <li><hr class="dropdown-divider m-0"></li>
+    <li>
+        <a class="dropdown-item text-primary fw-bold py-2" href="#" id="sendEmailBtn">
+            <i class="fas fa-envelope me-2"></i> E-posta ile Gönder
+        </a>
+    </li>
+</ul>
+
+<div class="modal fade" id="emailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <form id="emailForm" method="POST">
+                @csrf
+                <div class="modal-header bg-primary text-white border-0">
+                    <h5 class="modal-title fw-bold">📧 Dekont Gönder</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Kapat"></button>
+                </div>
+                <div class="modal-body bg-light">
+                    <label class="form-label text-muted small fw-bold">Alıcı E-posta Adresi</label>
+                    <input type="email" name="email" class="form-control" placeholder="ornek@firma.com" required>
+                    <small class="text-muted" style="font-size: 0.75rem;">Dekont PDF olarak eke eklenecektir.</small>
+                </div>
+                <div class="modal-footer border-0 bg-light pt-0">
+                    <button type="submit" class="btn btn-primary w-100 fw-bold shadow-sm">🚀 Hemen Gönder</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const customMenu = document.getElementById("customContextMenu");
+        const pdfBtn = document.getElementById("downloadPdfBtn");
+        const viewBtn = document.getElementById("viewBtn"); 
+        const printBtn = document.getElementById("printBtn");
+        const sendEmailBtn = document.getElementById("sendEmailBtn");
+        const emailForm = document.getElementById("emailForm");
+        
+        let selectedTransactionId = null;
+
+        // Sağ tık menüsünü tetikleme
+        document.querySelectorAll(".table-row-clickable").forEach(row => {
+            row.addEventListener("contextmenu", function(e) {
+                e.preventDefault(); 
+
+                selectedTransactionId = this.getAttribute("data-id");
+                
+                // Linkleri işlemi ID'sine göre dinamik ayarla
+                pdfBtn.href = "{{ url('/islem') }}/" + selectedTransactionId + "/pdf";
+                viewBtn.href = "{{ url('/islem') }}/" + selectedTransactionId + "/goruntule"; 
+                printBtn.href = "{{ url('/islem') }}/" + selectedTransactionId + "/yazdir";
+
+                customMenu.style.display = "block";
+                customMenu.style.left = e.pageX + "px";
+                customMenu.style.top = e.pageY + "px";
+            });
+        });
+
+        // Başka yere tıklanınca sağ tık menüsünü gizle
+        document.addEventListener("click", function(e) {
+            customMenu.style.display = "none";
+        });
+
+        // E-posta gönder butonuna basılınca
+        sendEmailBtn.addEventListener("click", function(e) {
+            e.preventDefault();
+            customMenu.style.display = "none"; 
+            
+            // Post adresini ayarla
+            emailForm.action = "{{ url('/islem') }}/" + selectedTransactionId + "/eposta-gonder";
+            
+            // Modalı aç
+            var emailModal = new bootstrap.Modal(document.getElementById('emailModal'));
+            emailModal.show();
+        });
+    });
+</script>
+
 </body>
 </html>

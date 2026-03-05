@@ -31,4 +31,10 @@ class Transaction extends Model
     {
         return $this->belongsTo(Bank::class);
     }
+    
+    public function tags()
+    {
+        // Pivot tablonun adını ve sütunlarını Laravel'e açıkça belirtiyoruz
+        return $this->belongsToMany(Tag::class, 'pos_transaction_tag', 'pos_transaction_id', 'tag_id');
+    }
 }

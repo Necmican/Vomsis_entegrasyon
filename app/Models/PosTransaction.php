@@ -19,4 +19,9 @@ class PosTransaction extends Model
     {
         return $this->belongsTo(VirtualPos::class);
     }
+    // Bir işlemin sahip olduğu tüm etiketleri getiren ilişki
+    public function tags()
+    {
+        return $this->belongsToMany(Tag::class, 'pos_transaction_tag');
+    }
 }
