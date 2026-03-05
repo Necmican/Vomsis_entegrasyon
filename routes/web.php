@@ -3,6 +3,9 @@
 use App\Services\VomsisService;
 use App\Http\Controllers\DashboardController;
 use App\Jobs\SyncVomsisJob;
+use App\Http\Controllers\ExportController;
+use App\Http\Controllers\PaymentController; 
+
 
 Route::get('/test-token', function (VomsisService $vomsisService) {
     try {
@@ -68,3 +71,18 @@ Route::get('/hata-test', function (App\Services\VomsisService $vomsisService) {
         return "HATA SEBEBİ: " . $e->getMessage() . " <br> SATIR: " . $e->getLine() . " <br> DOSYA: " . $e->getFile();
     }
 });
+
+Route::get('/export/pdf', [ExportController::class, 'exportPdf'])->name('export.pdf');
+Route::post('/export/excel', [ExportController::class, 'exportExcel'])->name('export.excel');
+
+Route::get('/odeme-yap', [PaymentController::class, 'index'])->name('payment.index');
+Route::post('/odeme-yap', [PaymentController::class, 'process'])->name('payment.process');
+
+Route::get('/sanal-pos-islemleri', [PaymentController::class, 'transactionsList'])->name('payment.list');
+
+Route::post('/odeme/bin-check', [PaymentController::class, 'binCheck'])->name('payment.bincheck');
+
+
+// Müşteri formu doldurup butona bastığında çalışacak rota (3D İsteğini atacağımız yer)
+Route::post('/odeme/isle', [PaymentController::class, 'process'])->name('payment.process');
+Route::post('/odeme/sonuc', [PaymentController::class, 'callback'])->name('payment.callback');

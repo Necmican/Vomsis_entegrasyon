@@ -5,16 +5,47 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vomsis Hesap Hareketleri</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .bank-item:hover { background-color: #f8f9fa; }
-        .bank-item.active { background-color: #e9ecef; border-left: 4px solid #0d6efd; font-weight: bold; }
+        
+        .bank-item.active { 
+            background-color: #e9ecef !important; 
+            border-left: 4px solid #0d6efd !important; 
+            font-weight: bold; 
+            color: #000 !important; 
+        }
+        
         .table-row-clickable { cursor: pointer; transition: background 0.2s; }
         .table-row-clickable:hover { background-color: #f1f4f8 !important; }
         .bank-logo { width: 32px; height: 32px; object-fit: contain; border-radius: 4px; background: white; padding: 2px; border: 1px solid #ddd; }
         
-        /* Hesap kartlarına tıklanabilme hissi vermek için hover efekti */
         .account-card-link { text-decoration: none; color: inherit; display: block; }
         .account-card:hover { border-color: #0d6efd !important; cursor: pointer; transform: translateY(-1px); transition: all 0.2s; }
+
+    
+        .table {
+            border-collapse: collapse !important; 
+            border: 2px solid #495057 !important; /* Dış çerçeve kalın ve koyu */
+            margin-bottom: 0 !important;
+        }
+
+        .table th, 
+        .table td {
+            border: 1px solid #6c757d !important; /* İç hücre çizgileri net ve belirgin */
+            vertical-align: middle; 
+        }
+
+        .table > thead > tr > th {
+            border-bottom: 3px solid #212529 !important; 
+            background-color: #e2e6ea !important; 
+            color: #212529 !important; 
+            font-weight: 700 !important;
+        }
+
+        .table-hover tbody tr:hover {
+            background-color: #dbe4ef !important; /* Üzerine gelince belirgin renk */
+        }
     </style>
 </head>
 <body class="bg-light pb-5">
@@ -30,7 +61,7 @@
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav me-auto">
                 <li class="nav-item"><a class="nav-link active" href="{{ url('/dashboard') }}">📊 Hesap Hareketleri</a></li>
-                <li class="nav-item"><a class="nav-link text-white-50" href="#">💳 Sanal POS (Yakında)</a></li>
+                <li class="nav-item"><a class="nav-link text-white-50" href="{{ route('payment.list') }}">💳 Sanal POS İşlemleri</a></li>
             </ul>
             <div class="d-flex">
                 <a href="{{ url('/arka-planda-cek') }}" class="btn btn-success btn-sm fw-bold">🔄 Vomsis'ten Verileri Çek</a>
@@ -205,13 +236,26 @@
                             @endif
                         </div>
                     </form>
+
+                    <div class="row mt-3 border-top pt-3">
+                        <div class="col-12 d-flex justify-content-end gap-2">
+                            <a href="{{ route('export.pdf', request()->query()) }}" class="btn btn-outline-danger btn-sm fw-bold">
+                                <i class="fas fa-file-pdf"></i> PDF İNDİR
+                            </a>
+                            
+                            <button type="button" class="btn btn-outline-success btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#excelExportModal">
+                                <i class="fas fa-file-excel"></i> EXCEL ÇIKART
+                            </button>
+                        </div>
+                    </div>
+
                 </div>
             </div>
 
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-body p-0 table-responsive">
-                    <table class="table table-hover mb-0 align-middle">
-                        <thead class="table-light text-secondary">
+                    <table class="table table-hover table-bordered mb-0 align-middle">
+                        <thead>
                             <tr>
                                 <th>Tarih</th>
                                 <th>Banka & Hesap</th>
@@ -299,6 +343,70 @@
                 @endif
             </div>
 
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="excelExportModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 500px;">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 12px;">
+            <div class="modal-header border-bottom-0 pb-0 mt-2">
+                <h5 class="modal-title w-100 text-center fw-bold" style="font-size: 1.1rem; color: #333;">Şablon Seçin</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body px-5 pb-5">
+                
+                <form action="{{ url('/export/excel') }}" method="POST">
+                    @csrf
+                    <input type="hidden" name="bank_id" value="{{ request('bank_id') }}">
+                    <input type="hidden" name="account_id" value="{{ request('account_id') }}">
+                    <input type="hidden" name="search" value="{{ request('search') }}">
+                    <input type="hidden" name="currency" value="{{ request('currency') }}">
+                    <input type="hidden" name="type_code" value="{{ request('type_code') }}">
+
+                    <div class="mb-4 mt-2">
+                        <select class="form-select text-muted bg-light border-light shadow-sm">
+                            <option value="default">Sistem Varsayılan</option>
+                        </select>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="separate_banks" value="1" id="sepBanks" style="transform: scale(1.2); margin-right: 8px;">
+                        <label class="form-check-label text-dark" for="sepBanks" style="font-size: 0.95rem;">
+                            Bankaları ayrı Excel sayfalarına ayır.
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" name="separate_accounts" value="1" id="sepAccounts" style="transform: scale(1.2); margin-right: 8px;">
+                        <label class="form-check-label text-dark" for="sepAccounts" style="font-size: 0.95rem;">
+                            Banka hesaplarına göre ayrı Excel sayfalarına ayır.
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" value="1" id="incSafes" disabled style="transform: scale(1.2); margin-right: 8px;">
+                        <label class="form-check-label text-muted" for="incSafes" style="font-size: 0.95rem;">
+                            Kasaları dahil et. <small>(Yakında)</small>
+                        </label>
+                    </div>
+
+                    <div class="form-check mb-4">
+                        <input class="form-check-input" type="checkbox" name="send_email" value="1" id="sendEmail" style="transform: scale(1.2); margin-right: 8px;">
+                        <label class="form-check-label text-dark" for="sendEmail" style="font-size: 0.95rem;">
+                            E-posta olarak gönder
+                        </label>
+                    </div>
+
+                    <div class="text-center mt-4">
+                        <small class="text-muted d-block mb-3" style="font-size: 0.85rem;">Excel sütunlarını özelleştirmek istiyorsanız şablon oluşturun.</small>
+                        <button type="submit" class="btn text-white fw-bold px-5 py-2 shadow-sm" style="background-color: #3fb0ff; border-radius: 8px; font-size: 0.95rem;">
+                            EXCEL ÇIKART
+                        </button>
+                    </div>
+                </form>
+
+            </div>
         </div>
     </div>
 </div>
