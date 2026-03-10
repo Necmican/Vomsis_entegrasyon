@@ -9,51 +9,110 @@ use App\Models\TransactionType;
 use App\Models\Bank;
 use App\Models\Tag; 
 use Illuminate\Support\Facades\Mail;
-use Barryvdh\DomPDF\Facade\Pdf; // PDF Motorunu içeri aktardık
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class DashboardController extends Controller
 {
     public function index(Request $request)
     {
-        // 1. GENEL KASA TOPLAMLARI
-        $totals = BankAccount::selectRaw('currency, SUM(balance) as total')
-            ->groupBy('currency')
-            ->pluck('total', 'currency');
-        
-        // 2. SOL MENÜ, FİLTRELER VE ETİKETLER
-        $banks = Bank::with('bankAccounts')->orderBy('bank_name')->get(); 
-        $transactionTypes = TransactionType::orderBy('name')->get(); 
-        
-        // Tüm etiketleri veritabanından çekip UI'a yolluyoruz
-        $allTags = Tag::orderBy('name')->get(); 
+        // ========================================================================
+        // 1. GİRİŞ YAPAN KULLANICIYI TANI VE İZİNLİ BANKALARI BELİRLE
+        // ========================================================================
+        $user = auth()->user();
+        $isAdmin = $user->role === 'admin';
+        $izinliBankalar = $user->allowed_banks ?? [];
 
-        // 3. SEÇİLİ BANKA VE ANA SORGU
-        $activeBank = null;
-        $activeBankSummary = [];
-        $activeBankAccounts = [];
+        // ========================================================================
+        // 2. SOL MENÜ İÇİN BANKALARI ÇEK (YETKİ FİLTRELİ)
+        // ========================================================================
+        $banksQuery = Bank::with('bankAccounts')->orderBy('bank_name');
 
-        if ($request->filled('bank_id')) {
-            $activeBank = Bank::with('bankAccounts')->find($request->bank_id);
-            
-            if ($activeBank) {
-                // tags ilişkisini with() içine koyduk ki sistem hızlansın
-                $query = $activeBank->transactions()->with(['bankAccount.bank', 'transactionType', 'tags']);
-                $activeBankAccounts = $activeBank->bankAccounts;
-                $activeBankSummary = $activeBank->bankAccounts->groupBy('currency')->map(function ($accounts) {
-                    return [
-                        'count' => $accounts->count(),
-                        'total' => $accounts->sum('balance')
-                    ];
-                });
-            } else {
-                $query = Transaction::with(['bankAccount.bank', 'transactionType', 'tags']); 
+        if (!$isAdmin) {
+            // Eğer personelin HİÇBİR bankaya yetkisi yoksa, boş ekranı güvenle gönder
+            if (empty($izinliBankalar)) {
+                return view('dashboard', [
+                    'banks'              => collect([]),
+                    'transactions'       => new \Illuminate\Pagination\LengthAwarePaginator([], 0, 20), // İŞTE SİHİRLİ DOKUNUŞ BURADA!
+                    'totals'             => [],
+                    'activeBank'         => null,
+                    'activeBankAccounts' => collect(),
+                    'activeBankSummary'  => [],
+                    'transactionTypes'   => collect([]),
+                    'allTags'            => collect([]),
+                    'filteredSummaries'  => collect([])
+                ])->with('error', 'Henüz hiçbir bankayı görüntüleme yetkiniz bulunmamaktadır. Lütfen yöneticinizle iletişime geçin.');
             }
-        } else {
-            $query = Transaction::with(['bankAccount.bank', 'transactionType', 'tags']); 
+            // SADECE izinli bankaların ID'lerini çek
+            $banksQuery->whereIn('id', $izinliBankalar);
+        }
+
+        $banks = $banksQuery->get();
+
+        // ========================================================================
+        // 3. AKTİF BANKA (SEÇİLEN VEYA VARSAYILAN) KONTROLÜ VE GÜVENLİK
+        // ========================================================================
+        $activeBank = null;
+        
+        if ($request->has('bank_id')) {
+            $istenenBankId = $request->input('bank_id');
+
+            // GÜVENLİK: Personel URL'den yetkisi olmayan bir banka ID'si girmeye çalışırsa!
+            if (!$isAdmin && !in_array($istenenBankId, $izinliBankalar)) {
+                return redirect()->route('dashboard')->with('error', 'Bu bankanın hesap hareketlerini görüntüleme yetkiniz bulunmamaktadır.');
+            }
+
+            $activeBank = $banks->firstWhere('id', $istenenBankId);
+        }
+
+
+        // ========================================================================
+        // 4. GENEL KASA TOPLAMLARI (YETKİ FİLTRELİ)
+        // ========================================================================
+        $totalsQuery = BankAccount::selectRaw('currency, SUM(balance) as total')->groupBy('currency');
+        
+        // Eğer admin değilse, sadece görebildiği bankaların hesaplarını topla! (Şirketin tüm kasasını sızdırma)
+        if (!$isAdmin) {
+            $totalsQuery->whereIn('bank_id', $izinliBankalar);
+        }
+        $totals = $totalsQuery->pluck('total', 'currency');
+
+        // ========================================================================
+        // 5. AKTİF BANKA DETAYLARI (HESAPLAR VE KURLAR)
+        // ========================================================================
+        $activeBankSummary = [];
+        $activeBankAccounts = collect();
+
+        if ($activeBank) {
+            $activeBankAccounts = $activeBank->bankAccounts;
+            $activeBankSummary = $activeBankAccounts->groupBy('currency')->map(function ($accounts) {
+                return [
+                    'count' => $accounts->count(),
+                    'total' => $accounts->sum('balance')
+                ];
+            });
         }
 
         // ========================================================================
-        // 4. DİĞER DİNAMİK FİLTRELER
+        // 6. ANA İŞLEM (TRANSACTION) SORGUSUNU BAŞLAT
+        // ========================================================================
+        $query = Transaction::with(['bankAccount.bank', 'transactionType', 'tags']);
+
+        // GÜVENLİK FİLTRESİ: Eğer adam Admin değilse, ASLA diğer bankaların işlemlerini çekme!
+        if (!$isAdmin) {
+            $query->whereHas('bankAccount', function ($q) use ($izinliBankalar) {
+                $q->whereIn('bank_id', $izinliBankalar);
+            });
+        }
+
+        // Eğer sol menüden bir banka seçilmişse sorguya ekle
+        if ($activeBank) {
+            $query->whereHas('bankAccount', function ($q) use ($activeBank) {
+                $q->where('bank_id', $activeBank->id);
+            });
+        }
+
+        // ========================================================================
+        // 7. KULLANICI ARAMA VE DİNAMİK FİLTRELERİ
         // ========================================================================
         if ($request->filled('search')) {
             $query->where('description', 'like', '%' . $request->search . '%');
@@ -69,7 +128,6 @@ class DashboardController extends Controller
         if ($request->filled('account_id')) {
             $query->where('bank_account_id', $request->account_id);
         }
-        // ETİKETE GÖRE FİLTRELEME
         if ($request->filled('tag_id')) {
             $query->whereHas('tags', function ($q) use ($request) {
                 $q->where('tags.id', $request->tag_id);
@@ -77,13 +135,19 @@ class DashboardController extends Controller
         }
 
         // ========================================================================
-        // 4.5. DİNAMİK GELİR/GİDER HESABI
+        // 8. DİNAMİK GELİR/GİDER HESABI (YETKİ KORUMALI)
         // ========================================================================
         $summaryQuery = Transaction::join('bank_accounts', 'transactions.bank_account_id', '=', 'bank_accounts.id');
 
-        if ($request->filled('bank_id')) {
-            $summaryQuery->where('bank_accounts.bank_id', $request->bank_id);
+        // GÜVENLİK FİLTRESİ (Gider hesabında da admin değilse yetkisiz bankaları görmesin)
+        if (!$isAdmin) {
+            $summaryQuery->whereIn('bank_accounts.bank_id', $izinliBankalar);
         }
+
+        if ($activeBank) {
+            $summaryQuery->where('bank_accounts.bank_id', $activeBank->id);
+        }
+
         if ($request->filled('search')) {
             $summaryQuery->where('transactions.description', 'like', '%' . $request->search . '%');
         }
@@ -96,7 +160,6 @@ class DashboardController extends Controller
         if ($request->filled('account_id')) {
             $summaryQuery->where('transactions.bank_account_id', $request->account_id);
         }
-        // ÖZET KISMI İÇİN ETİKET FİLTRELEMESİ
         if ($request->filled('tag_id')) {
             $summaryQuery->join('pos_transaction_tag', 'transactions.id', '=', 'pos_transaction_tag.pos_transaction_id')
                          ->where('pos_transaction_tag.tag_id', $request->tag_id);
@@ -109,7 +172,12 @@ class DashboardController extends Controller
             ->groupBy('bank_accounts.currency')
             ->get();
 
-        // 5. SAYFALAMA
+        // ========================================================================
+        // 9. SABİT LİSTELER VE SAYFALAMA
+        // ========================================================================
+        $transactionTypes = TransactionType::orderBy('name')->get(); 
+        $allTags = Tag::orderBy('name')->get(); 
+
         $transactions = $query->orderBy('transaction_date', 'desc')
                               ->paginate(20)
                               ->withQueryString();
@@ -121,34 +189,45 @@ class DashboardController extends Controller
         ));
     }
 
+
     // ========================================================================
-    // SAĞ TIK: GÖRÜNTÜLE, YAZDIR, PDF İNDİR VE E-POSTA İŞLEMLERİ
+    // SAĞ TIK: GÖRÜNTÜLE, YAZDIR, PDF İNDİR VE E-POSTA İŞLEMLERİ (GÜVENLİ)
     // ========================================================================
 
     /**
-     * Sağ tık ile faturayı web sayfasında (HTML) görüntüler
+     * Arka Kapı Güvenlik Kontrolü (Yetkisiz PDF indirmeyi engeller)
      */
+    private function checkTransactionAccess($transaction)
+    {
+        $user = auth()->user();
+        if ($user->role !== 'admin') {
+            $izinliBankalar = $user->allowed_banks ?? [];
+            if (!in_array($transaction->bankAccount->bank_id, $izinliBankalar)) {
+                abort(403, 'Bu işlemi görüntüleme veya işlem yapma yetkiniz bulunmamaktadır.');
+            }
+        }
+    }
+
     public function viewTransaction($id)
     {
         $transaction = Transaction::with(['bankAccount.bank', 'transactionType', 'tags'])->findOrFail($id);
+        $this->checkTransactionAccess($transaction); // GÜVENLİK
+        
         return view('pdf.transaction', compact('transaction'));
     }
 
-    /**
-     * Sağ tık ile faturayı açar ve tarayıcıya "YAZDIR" emri yollar
-     */
     public function printTransaction($id)
     {
         $transaction = Transaction::with(['bankAccount.bank', 'transactionType', 'tags'])->findOrFail($id);
+        $this->checkTransactionAccess($transaction); // GÜVENLİK
+        
         return view('pdf.transaction', compact('transaction'))->with('is_print', true);
     }
 
-    /**
-     * Sağ tık ile işlemi PDF olarak bilgisayara indirir
-     */
     public function downloadPdf($id)
     {
         $transaction = Transaction::with(['bankAccount.bank', 'transactionType', 'tags'])->findOrFail($id);
+        $this->checkTransactionAccess($transaction); // GÜVENLİK
 
         $pdf = Pdf::loadView('pdf.transaction', compact('transaction'));
         $pdf->setOptions(['defaultFont' => 'DejaVu Sans']);
@@ -156,23 +235,16 @@ class DashboardController extends Controller
         return $pdf->download('vomsis-islem-' . $transaction->id . '.pdf');
     }
 
-    /**
-     * Sağ tık ile PDF dekontu e-posta olarak gönderir
-     */
     public function sendPdfEmail(Request $request, $id)
     {
-        // 1. E-posta adresinin doğru girildiğinden emin ol
-        $request->validate([
-            'email' => 'required|email'
-        ]);
+        $request->validate(['email' => 'required|email']);
 
         $transaction = Transaction::with(['bankAccount.bank', 'transactionType', 'tags'])->findOrFail($id);
+        $this->checkTransactionAccess($transaction); // GÜVENLİK
 
-        // 2. PDF'i bilgisayara indirmeden doğrudan bellekte (RAM) oluştur
         $pdf = Pdf::loadView('pdf.transaction', compact('transaction'));
         $pdf->setOptions(['defaultFont' => 'DejaVu Sans']);
 
-        // 3. E-postayı hazırla ve gönder
         Mail::send([], [], function ($message) use ($request, $pdf, $transaction) {
             $message->to($request->email)
                     ->subject("Vomsis Dekont: İşlem #{$transaction->id}")
@@ -182,7 +254,6 @@ class DashboardController extends Controller
                     ]);
         });
 
-        // 4. Başarı mesajıyla ekrana dön
         return back()->with('mesaj', "📧 Dekont başarıyla <b>{$request->email}</b> adresine gönderildi.");
     }
 }

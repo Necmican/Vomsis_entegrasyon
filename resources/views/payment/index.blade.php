@@ -51,7 +51,7 @@
 
                     <form action="{{ route('payment.process') }}" method="POST">
                         @csrf
-                        <input type="hidden" name="virtual_pos_id" value="{{ $activePos->id }}">
+                       <input type="hidden" name="virtual_pos_id" value="{{ $activePos->id ?? '' }}">
 
                         <div class="mb-3">
                             <label class="form-label text-muted fw-bold small">Ödenecek Tutar (TL)</label>

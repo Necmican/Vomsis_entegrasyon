@@ -210,4 +210,45 @@ class VomsisService
 
         throw new \Exception('İşlemler çekilemedi! Hata: ' . $response->body());
     }
+    public function syncVirtualPoses()
+    {
+        $token = $this->getToken();
+
+        if (!$token) {
+            throw new \Exception("Vomsis Token alınamadı!");
+        }
+
+        // Vomsis'ten POS Listesini İstiyoruz
+        $response = Http::withToken($token)
+            ->acceptJson()
+            ->get('https://uygulama.vomsis.com/api/v2/pos-rapor/stations'); // Vomsis'in POS listesi ucu
+
+        if ($response->successful()) {
+            $poses = $response->json();
+            $kaydedilenSayi = 0;
+
+            // Eğer API "data" dizisi dönüyorsa (Vomsis mimarisine göre değişebilir, kontrol ediyoruz)
+            $posListesi = isset($poses['data']) ? $poses['data'] : (is_array($poses) ? $poses : []);
+
+            foreach ($posListesi as $pos) {
+                // Kendi VirtualPos modelimize kaydediyoruz (Model adın ve sütunların farklıysa burayı güncelle)
+                \App\Models\VirtualPos::updateOrCreate(
+                    [
+                        // Vomsis'ten gelen benzersiz POS ID'si
+                        'vomsis_pos_id' => $pos['id'] ?? $pos['station_id'] 
+                    ],
+                    [
+                        'bank_name'   => $pos['bank_name'] ?? $pos['name'] ?? 'Bilinmeyen POS',
+                        'merchant_id' => $pos['merchant_id'] ?? 'Yok',
+                        'is_active'   => true, // API'den geliyorsa aktiftir
+                    ]
+                );
+                $kaydedilenSayi++;
+            }
+
+            return "Başarılı! Vomsis'ten {$kaydedilenSayi} adet Sanal POS çekildi ve veritabanına kaydedildi.";
+        }
+
+        throw new \Exception("Sanal POS'lar çekilemedi! HTTP Kodu: " . $response->status() . " | Mesaj: " . $response->body());
+    }
 }

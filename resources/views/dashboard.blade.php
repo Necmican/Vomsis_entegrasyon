@@ -60,13 +60,39 @@
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav me-auto">
                 <li class="nav-item"><a class="nav-link active" href="{{ url('/dashboard') }}">📊 Hesap Hareketleri</a></li>
-                <li class="nav-item"><a class="nav-link text-white-50" href="{{ route('payment.list') }}">💳 Sanal POS İşlemleri</a></li>
+                
+                @if(auth()->user()->can_view_pos)
+                    <li class="nav-item"><a class="nav-link text-white-50" href="{{ route('payment.list') }}">💳 Sanal POS İşlemleri</a></li>
+                @endif
             </ul>
-            <div class="d-flex gap-2">
+            
+            <div class="d-flex align-items-center gap-2">
+                @if(auth()->user()->role === 'admin')
+                    <a href="{{ route('users.create') }}" class="btn btn-warning btn-sm fw-bold">
+                        👤 Personel Ekle
+                    </a>
+                @endif
+
                 <button type="button" class="btn btn-outline-light btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#createTagModal">
-                    🏷️ Yeni Etiket Üret
+                    🏷️ Yeni Etiket
                 </button>
-                <a href="{{ url('/arka-planda-cek') }}" class="btn btn-success btn-sm fw-bold">🔄 Vomsis'ten Verileri Çek</a>
+                <a href="{{ url('/arka-planda-cek') }}" class="btn btn-success btn-sm fw-bold">🔄 Verileri Çek</a>
+
+                <div class="dropdown ms-2">
+                    <button class="btn btn-secondary btn-sm dropdown-toggle fw-bold" type="button" data-bs-toggle="dropdown">
+                        👋 {{ auth()->user()->name }}
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2">
+                        <li>
+                            <form action="{{ route('logout') }}" method="POST">
+                                @csrf
+                                <button type="submit" class="dropdown-item text-danger fw-bold">
+                                    <i class="fas fa-sign-out-alt me-2"></i> Çıkış Yap
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
@@ -77,6 +103,12 @@
     @if(session('mesaj'))
     <div class="alert alert-success shadow-sm p-3 mb-4">
         <strong>Harika!</strong> {!! session('mesaj') !!}
+    </div>
+    @endif
+    
+    @if(session('error'))
+    <div class="alert alert-danger shadow-sm p-3 mb-4 fw-bold border-0 border-start border-danger border-4">
+        ⚠️ {!! session('error') !!}
     </div>
     @endif
 
