@@ -112,5 +112,19 @@ Route::middleware('auth')->group(function () {
     Route::get('/test-poses', function (VomsisService $vomsisService) {
         try { return $vomsisService->syncVirtualPoses(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
     });
-
-});
+    // ========================================================================
+    // FİZİKSEL POS (TERMİNAL) ROTALARI
+    // ========================================================================
+    Route::get('/fiziksel-pos', [\App\Http\Controllers\PhysicalPosController::class, 'index'])->name('physical_pos.index');
+    Route::get('/fiziksel-pos/senkronize', [\App\Http\Controllers\PhysicalPosController::class, 'sync'])->name('physical_pos.sync');
+// ========================================================================
+    // FİZİKSEL POS (TERMİNAL) ROTALARI
+    // ========================================================================
+    Route::get('/fiziksel-pos', [\App\Http\Controllers\PhysicalPosController::class, 'index'])->name('physical_pos.index');
+    Route::get('/fiziksel-pos/senkronize', [\App\Http\Controllers\PhysicalPosController::class, 'sync'])->name('physical_pos.sync');
+    
+    // YENİ EKLENEN ROTA: Belirli bir cihazın içindeki hareketleri çeker
+    Route::get('/fiziksel-pos/{id}/islemleri-cek', [\App\Http\Controllers\PhysicalPosController::class, 'syncTransactions'])->name('physical_pos.sync_transactions');
+// FİZİKSEL POS İŞLEMLERİNİ GÖRÜNTÜLEME EKRANI
+    Route::get('/fiziksel-pos/{id}/islemler', [\App\Http\Controllers\PhysicalPosController::class, 'showTransactions'])->name('physical_pos.transactions');
+    });

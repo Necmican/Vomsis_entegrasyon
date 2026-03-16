@@ -64,6 +64,10 @@
                 @if(auth()->user()->can_view_pos)
                     <li class="nav-item"><a class="nav-link text-white-50" href="{{ route('payment.list') }}">💳 Sanal POS İşlemleri</a></li>
                 @endif
+
+                @if(auth()->user()->role === 'admin' || auth()->user()->can_view_physical_pos)
+                    <li class="nav-item"><a class="nav-link text-white-50" href="{{ route('physical_pos.index') }}">📠 Fiziksel POS</a></li>
+                @endif
             </ul>
             
             <div class="d-flex align-items-center gap-2">
@@ -73,9 +77,12 @@
                     </a>
                 @endif
 
+                @if(auth()->user()->role === 'admin' || auth()->user()->can_create_tags)
                 <button type="button" class="btn btn-outline-light btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#createTagModal">
                     🏷️ Yeni Etiket
                 </button>
+                @endif
+
                 <a href="{{ url('/arka-planda-cek') }}" class="btn btn-success btn-sm fw-bold">🔄 Verileri Çek</a>
 
                 <div class="dropdown ms-2">
@@ -507,6 +514,7 @@
     </div>
 </div>
 
+@if(auth()->user()->role === 'admin' || auth()->user()->can_create_tags)
 <div class="modal fade" id="createTagModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
@@ -533,6 +541,7 @@
     </div>
   </div>
 </div>
+@endif
 
 <ul id="customContextMenu" class="dropdown-menu shadow" style="display:none; position:absolute; z-index:9999; cursor: pointer;">
     <li>

@@ -9,7 +9,6 @@ use Illuminate\Notifications\Notifiable;
 
 class User extends Authenticatable
 {
-   
     use HasFactory, Notifiable;
 
     /**
@@ -22,8 +21,11 @@ class User extends Authenticatable
         'email',
         'password',
         'role',          
-        'can_view_pos',  
+        'can_view_pos', 
+        'can_view_physical_pos', 
+        'can_create_tags',  // YENİ: Etiket üretebilme yetkisi
         'allowed_banks', 
+        'allowed_tags',     // YENİ: Görebileceği etiketler
     ];
 
     /**
@@ -44,10 +46,13 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
-            'can_view_pos' => 'boolean', 
-            'allowed_banks' => 'array',  
+            'email_verified_at'     => 'datetime',
+            'password'              => 'hashed',
+            'can_view_pos'          => 'boolean',
+            'can_view_physical_pos' => 'boolean',
+            'can_create_tags'       => 'boolean',
+            'allowed_banks'         => 'array',
+            'allowed_tags'          => 'array', 
         ];
     }
 }

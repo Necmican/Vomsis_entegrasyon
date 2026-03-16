@@ -16,11 +16,12 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         // ========================================================================
-        // 1. GİRİŞ YAPAN KULLANICIYI TANI VE İZİNLİ BANKALARI BELİRLE
+        // 1. GİRİŞ YAPAN KULLANICIYI TANI VE İZİNLERİ BELİRLE
         // ========================================================================
         $user = auth()->user();
         $isAdmin = $user->role === 'admin';
         $izinliBankalar = $user->allowed_banks ?? [];
+        $izinliEtiketler = $user->allowed_tags ?? []; // YENİ: Etiket izinlerini en baştan alıyoruz
 
         // ========================================================================
         // 2. SOL MENÜ İÇİN BANKALARI ÇEK (YETKİ FİLTRELİ)
@@ -28,11 +29,10 @@ class DashboardController extends Controller
         $banksQuery = Bank::with('bankAccounts')->orderBy('bank_name');
 
         if (!$isAdmin) {
-            // Eğer personelin HİÇBİR bankaya yetkisi yoksa, boş ekranı güvenle gönder
             if (empty($izinliBankalar)) {
                 return view('dashboard', [
                     'banks'              => collect([]),
-                    'transactions'       => new \Illuminate\Pagination\LengthAwarePaginator([], 0, 20), // İŞTE SİHİRLİ DOKUNUŞ BURADA!
+                    'transactions'       => new \Illuminate\Pagination\LengthAwarePaginator([], 0, 20),
                     'totals'             => [],
                     'activeBank'         => null,
                     'activeBankAccounts' => collect(),
@@ -42,7 +42,6 @@ class DashboardController extends Controller
                     'filteredSummaries'  => collect([])
                 ])->with('error', 'Henüz hiçbir bankayı görüntüleme yetkiniz bulunmamaktadır. Lütfen yöneticinizle iletişime geçin.');
             }
-            // SADECE izinli bankaların ID'lerini çek
             $banksQuery->whereIn('id', $izinliBankalar);
         }
 
@@ -56,7 +55,6 @@ class DashboardController extends Controller
         if ($request->has('bank_id')) {
             $istenenBankId = $request->input('bank_id');
 
-            // GÜVENLİK: Personel URL'den yetkisi olmayan bir banka ID'si girmeye çalışırsa!
             if (!$isAdmin && !in_array($istenenBankId, $izinliBankalar)) {
                 return redirect()->route('dashboard')->with('error', 'Bu bankanın hesap hareketlerini görüntüleme yetkiniz bulunmamaktadır.');
             }
@@ -64,13 +62,11 @@ class DashboardController extends Controller
             $activeBank = $banks->firstWhere('id', $istenenBankId);
         }
 
-
         // ========================================================================
         // 4. GENEL KASA TOPLAMLARI (YETKİ FİLTRELİ)
         // ========================================================================
         $totalsQuery = BankAccount::selectRaw('currency, SUM(balance) as total')->groupBy('currency');
         
-        // Eğer admin değilse, sadece görebildiği bankaların hesaplarını topla! (Şirketin tüm kasasını sızdırma)
         if (!$isAdmin) {
             $totalsQuery->whereIn('bank_id', $izinliBankalar);
         }
@@ -97,14 +93,21 @@ class DashboardController extends Controller
         // ========================================================================
         $query = Transaction::with(['bankAccount.bank', 'transactionType', 'tags']);
 
-        // GÜVENLİK FİLTRESİ: Eğer adam Admin değilse, ASLA diğer bankaların işlemlerini çekme!
         if (!$isAdmin) {
+            // A. Banka Yetki Kilidi
             $query->whereHas('bankAccount', function ($q) use ($izinliBankalar) {
                 $q->whereIn('bank_id', $izinliBankalar);
             });
+
+            // B. YENİ: Etiket Yetki Kilidi (Etiketsizler VEYA yetkili olduğu etiketler)
+            $query->where(function ($q) use ($izinliEtiketler) {
+                $q->doesntHave('tags')
+                  ->orWhereHas('tags', function ($subQ) use ($izinliEtiketler) {
+                      $subQ->whereIn('tags.id', $izinliEtiketler);
+                  });
+            });
         }
 
-        // Eğer sol menüden bir banka seçilmişse sorguya ekle
         if ($activeBank) {
             $query->whereHas('bankAccount', function ($q) use ($activeBank) {
                 $q->where('bank_id', $activeBank->id);
@@ -139,9 +142,17 @@ class DashboardController extends Controller
         // ========================================================================
         $summaryQuery = Transaction::join('bank_accounts', 'transactions.bank_account_id', '=', 'bank_accounts.id');
 
-        // GÜVENLİK FİLTRESİ (Gider hesabında da admin değilse yetkisiz bankaları görmesin)
         if (!$isAdmin) {
+            // A. Banka Yetki Kilidi
             $summaryQuery->whereIn('bank_accounts.bank_id', $izinliBankalar);
+
+            // B. YENİ: Etiket Yetki Kilidi (Üstteki gelir/gider hesabı şaşmasın diye)
+            $summaryQuery->where(function ($q) use ($izinliEtiketler) {
+                $q->doesntHave('tags')
+                  ->orWhereHas('tags', function ($subQ) use ($izinliEtiketler) {
+                      $subQ->whereIn('tags.id', $izinliEtiketler);
+                  });
+            });
         }
 
         if ($activeBank) {
@@ -176,7 +187,12 @@ class DashboardController extends Controller
         // 9. SABİT LİSTELER VE SAYFALAMA
         // ========================================================================
         $transactionTypes = TransactionType::orderBy('name')->get(); 
-        $allTags = Tag::orderBy('name')->get(); 
+        
+        if ($isAdmin) {
+            $allTags = Tag::orderBy('name')->get(); 
+        } else {
+            $allTags = Tag::whereIn('id', $izinliEtiketler)->orderBy('name')->get();
+        }
 
         $transactions = $query->orderBy('transaction_date', 'desc')
                               ->paginate(20)
@@ -189,21 +205,30 @@ class DashboardController extends Controller
         ));
     }
 
-
     // ========================================================================
     // SAĞ TIK: GÖRÜNTÜLE, YAZDIR, PDF İNDİR VE E-POSTA İŞLEMLERİ (GÜVENLİ)
     // ========================================================================
 
-    /**
-     * Arka Kapı Güvenlik Kontrolü (Yetkisiz PDF indirmeyi engeller)
-     */
     private function checkTransactionAccess($transaction)
     {
         $user = auth()->user();
         if ($user->role !== 'admin') {
+            // 1. Banka yetkisi kontrolü
             $izinliBankalar = $user->allowed_banks ?? [];
             if (!in_array($transaction->bankAccount->bank_id, $izinliBankalar)) {
                 abort(403, 'Bu işlemi görüntüleme veya işlem yapma yetkiniz bulunmamaktadır.');
+            }
+
+            // 2. YENİ: Etiket yetkisi kontrolü (Adam PDF olarak indirmesin diye)
+            if ($transaction->tags->isNotEmpty()) {
+                $izinliEtiketler = $user->allowed_tags ?? [];
+                
+                // İşlemdeki etiketlerden en az biri, adamın izinli listesinde var mı diye bak
+                $hasAllowedTag = $transaction->tags->pluck('id')->intersect($izinliEtiketler)->isNotEmpty();
+                
+                if (!$hasAllowedTag) {
+                    abort(403, 'Bu işlemi görüntüleme yetkiniz bulunmamaktadır (Gizli İşlem).');
+                }
             }
         }
     }
@@ -211,7 +236,7 @@ class DashboardController extends Controller
     public function viewTransaction($id)
     {
         $transaction = Transaction::with(['bankAccount.bank', 'transactionType', 'tags'])->findOrFail($id);
-        $this->checkTransactionAccess($transaction); // GÜVENLİK
+        $this->checkTransactionAccess($transaction); 
         
         return view('pdf.transaction', compact('transaction'));
     }
@@ -219,7 +244,7 @@ class DashboardController extends Controller
     public function printTransaction($id)
     {
         $transaction = Transaction::with(['bankAccount.bank', 'transactionType', 'tags'])->findOrFail($id);
-        $this->checkTransactionAccess($transaction); // GÜVENLİK
+        $this->checkTransactionAccess($transaction); 
         
         return view('pdf.transaction', compact('transaction'))->with('is_print', true);
     }
@@ -227,7 +252,7 @@ class DashboardController extends Controller
     public function downloadPdf($id)
     {
         $transaction = Transaction::with(['bankAccount.bank', 'transactionType', 'tags'])->findOrFail($id);
-        $this->checkTransactionAccess($transaction); // GÜVENLİK
+        $this->checkTransactionAccess($transaction); 
 
         $pdf = Pdf::loadView('pdf.transaction', compact('transaction'));
         $pdf->setOptions(['defaultFont' => 'DejaVu Sans']);
@@ -240,7 +265,7 @@ class DashboardController extends Controller
         $request->validate(['email' => 'required|email']);
 
         $transaction = Transaction::with(['bankAccount.bank', 'transactionType', 'tags'])->findOrFail($id);
-        $this->checkTransactionAccess($transaction); // GÜVENLİK
+        $this->checkTransactionAccess($transaction); 
 
         $pdf = Pdf::loadView('pdf.transaction', compact('transaction'));
         $pdf->setOptions(['defaultFont' => 'DejaVu Sans']);

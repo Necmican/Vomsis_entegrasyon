@@ -10,14 +10,17 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up(): void
-{
-    Schema::create('tags', function (Blueprint $table) {
-        $table->id();
-        $table->string('name'); // Etiket Adı (Örn: Acil, VIP Müşteri, İade İstedi)
-        $table->string('color')->default('#0d6efd'); // Etiket Rengi (HEX Kodu, varsayılan mavi)
-        $table->timestamps();
-    });
-}
+    {
+        
+        Schema::dropIfExists('tags');
+
+        Schema::create('tags', function (Blueprint $table) {
+            $table->id(); 
+            $table->string('name'); 
+            $table->string('color')->default('#0d6efd'); 
+            $table->timestamps(); 
+        });
+    }
 
     /**
      * Reverse the migrations.
