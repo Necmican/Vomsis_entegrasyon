@@ -127,4 +127,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/fiziksel-pos/{id}/islemleri-cek', [\App\Http\Controllers\PhysicalPosController::class, 'syncTransactions'])->name('physical_pos.sync_transactions');
 // FİZİKSEL POS İŞLEMLERİNİ GÖRÜNTÜLEME EKRANI
     Route::get('/fiziksel-pos/{id}/islemler', [\App\Http\Controllers\PhysicalPosController::class, 'showTransactions'])->name('physical_pos.transactions');
+    Route::post('/islem/toplu-etiket-ekle', [App\Http\Controllers\TagController::class, 'bulkAttachTags']);
+    Route::post('/banka-ayarlari-kaydet', [App\Http\Controllers\DashboardController::class, 'updateBankSettings'])->name('bank.settings.update');
+    Route::post('/islem/toplu-etiket-cikar', [App\Http\Controllers\TagController::class, 'bulkDetachTags']);
+    // ========================================================================
+    // 7. YAPAY ZEKA ASİSTANI (AI CHATBOT)
+    // ========================================================================
+    Route::post('/ai/ask', [App\Http\Controllers\AiController::class, 'ask'])->name('ai.ask');
+
+
+    
     });

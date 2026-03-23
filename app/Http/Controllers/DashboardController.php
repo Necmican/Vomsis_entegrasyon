@@ -21,12 +21,20 @@ class DashboardController extends Controller
         $user = auth()->user();
         $isAdmin = $user->role === 'admin';
         $izinliBankalar = $user->allowed_banks ?? [];
-        $izinliEtiketler = $user->allowed_tags ?? []; // YENİ: Etiket izinlerini en baştan alıyoruz
+        $izinliEtiketler = $user->allowed_tags ?? [];
 
         // ========================================================================
-        // 2. SOL MENÜ İÇİN BANKALARI ÇEK (YETKİ FİLTRELİ)
+        // YENİ: YÖNETİM PANELİ İÇİN TÜM BANKALARI ÇEK (Sadece Admin Görür)
         // ========================================================================
-        $banksQuery = Bank::with('bankAccounts')->orderBy('bank_name');
+        $allSettingsBanks = $isAdmin ? Bank::with('bankAccounts')->orderBy('bank_name')->get() : collect();
+
+        // ========================================================================
+        // 2. SOL MENÜ İÇİN BANKALARI ÇEK (Görünürlük ve Yetki Filtreli)
+        // ========================================================================
+        // Sadece is_visible = true olan bankaları ve onların is_visible = true olan hesaplarını getir.
+        $banksQuery = Bank::with(['bankAccounts' => function($q) {
+            $q->where('is_visible', true);
+        }])->where('is_visible', true)->orderBy('bank_name');
 
         if (!$isAdmin) {
             if (empty($izinliBankalar)) {
@@ -39,7 +47,8 @@ class DashboardController extends Controller
                     'activeBankSummary'  => [],
                     'transactionTypes'   => collect([]),
                     'allTags'            => collect([]),
-                    'filteredSummaries'  => collect([])
+                    'filteredSummaries'  => collect([]),
+                    'allSettingsBanks'   => collect([])
                 ])->with('error', 'Henüz hiçbir bankayı görüntüleme yetkiniz bulunmamaktadır. Lütfen yöneticinizle iletişime geçin.');
             }
             $banksQuery->whereIn('id', $izinliBankalar);
@@ -63,9 +72,16 @@ class DashboardController extends Controller
         }
 
         // ========================================================================
-        // 4. GENEL KASA TOPLAMLARI (YETKİ FİLTRELİ)
+        // 4. GENEL KASA TOPLAMLARI (GÖRÜNÜRLÜK VE KASAYA DAHİL ETME FİLTRELİ)
         // ========================================================================
-        $totalsQuery = BankAccount::selectRaw('currency, SUM(balance) as total')->groupBy('currency');
+        // Sadece bankası görünür olan, hesabı görünür olan VE kendisi kasaya dahil olanları topla.
+        $totalsQuery = BankAccount::where('include_in_totals', true)
+                                  ->where('is_visible', true)
+                                  ->whereHas('bank', function($q) {
+                                      $q->where('is_visible', true);
+                                  })
+                                  ->selectRaw('currency, SUM(balance) as total')
+                                  ->groupBy('currency');
         
         if (!$isAdmin) {
             $totalsQuery->whereIn('bank_id', $izinliBankalar);
@@ -79,7 +95,8 @@ class DashboardController extends Controller
         $activeBankAccounts = collect();
 
         if ($activeBank) {
-            $activeBankAccounts = $activeBank->bankAccounts;
+            // Sadece görünür hesapları listele
+            $activeBankAccounts = $activeBank->bankAccounts->where('is_visible', true);
             $activeBankSummary = $activeBankAccounts->groupBy('currency')->map(function ($accounts) {
                 return [
                     'count' => $accounts->count(),
@@ -93,13 +110,20 @@ class DashboardController extends Controller
         // ========================================================================
         $query = Transaction::with(['bankAccount.bank', 'transactionType', 'tags']);
 
+        // GÜVENLİK VE GÖRÜNÜRLÜK: Sadece Görünür Banka ve Görünür Hesapların işlemlerini çek!
+        $query->whereHas('bankAccount', function ($q) {
+            $q->where('is_visible', true)->whereHas('bank', function($subQ) {
+                $subQ->where('is_visible', true);
+            });
+        });
+
         if (!$isAdmin) {
             // A. Banka Yetki Kilidi
             $query->whereHas('bankAccount', function ($q) use ($izinliBankalar) {
                 $q->whereIn('bank_id', $izinliBankalar);
             });
 
-            // B. YENİ: Etiket Yetki Kilidi (Etiketsizler VEYA yetkili olduğu etiketler)
+            // B. Etiket Yetki Kilidi (Etiketsizler VEYA yetkili olduğu etiketler)
             $query->where(function ($q) use ($izinliEtiketler) {
                 $q->doesntHave('tags')
                   ->orWhereHas('tags', function ($subQ) use ($izinliEtiketler) {
@@ -138,15 +162,20 @@ class DashboardController extends Controller
         }
 
         // ========================================================================
-        // 8. DİNAMİK GELİR/GİDER HESABI (YETKİ KORUMALI)
+        // 8. DİNAMİK GELİR/GİDER HESABI (KASA DAHİLİYET KORUMALI)
         // ========================================================================
-        $summaryQuery = Transaction::join('bank_accounts', 'transactions.bank_account_id', '=', 'bank_accounts.id');
+        $summaryQuery = Transaction::join('bank_accounts', 'transactions.bank_account_id', '=', 'bank_accounts.id')
+            ->join('banks', 'bank_accounts.bank_id', '=', 'banks.id')
+            // YENİ SÜZGEÇ: Kasaya dahil edilmeyen veya gizli olanların parasını sayma!
+            ->where('bank_accounts.include_in_totals', true)
+            ->where('bank_accounts.is_visible', true)
+            ->where('banks.is_visible', true);
 
         if (!$isAdmin) {
             // A. Banka Yetki Kilidi
             $summaryQuery->whereIn('bank_accounts.bank_id', $izinliBankalar);
 
-            // B. YENİ: Etiket Yetki Kilidi (Üstteki gelir/gider hesabı şaşmasın diye)
+            // B. Etiket Yetki Kilidi
             $summaryQuery->where(function ($q) use ($izinliEtiketler) {
                 $q->doesntHave('tags')
                   ->orWhereHas('tags', function ($subQ) use ($izinliEtiketler) {
@@ -201,8 +230,42 @@ class DashboardController extends Controller
         return view('dashboard', compact(
             'transactions', 'totals', 'transactionTypes', 'banks', 
             'filteredSummaries', 'activeBank', 'activeBankSummary', 'activeBankAccounts',
-            'allTags' 
+            'allTags', 'allSettingsBanks'
         ));
+    }
+
+    // ========================================================================
+    // YENİ: BANKA VE HESAP AYARLARINI KAYDETME (ADMIN ONLY)
+    // ========================================================================
+    public function updateBankSettings(Request $request)
+    {
+        if (auth()->user()->role !== 'admin') {
+            abort(403, 'Sadece yöneticiler banka ayarlarını değiştirebilir.');
+        }
+
+        $bankSettings = $request->input('banks', []);
+        $accountSettings = $request->input('accounts', []);
+
+        // Önce tüm bankaları ve hesapları "Kapalı" yapıyoruz
+        Bank::query()->update(['is_visible' => false]);
+        BankAccount::query()->update(['is_visible' => false, 'include_in_totals' => false]);
+
+        // Formdan "Açık" olarak gelen Bankaları güncelle
+        foreach ($bankSettings as $bankId => $settings) {
+            Bank::where('id', $bankId)->update([
+                'is_visible' => isset($settings['is_visible'])
+            ]);
+        }
+
+        // Formdan "Açık" olarak gelen Hesapları güncelle
+        foreach ($accountSettings as $accId => $settings) {
+            BankAccount::where('id', $accId)->update([
+                'is_visible'        => isset($settings['is_visible']),
+                'include_in_totals' => isset($settings['include_in_totals'])
+            ]);
+        }
+
+        return back()->with('mesaj', '🏦 Banka ve Kasa ayarları başarıyla güncellendi.');
     }
 
     // ========================================================================
@@ -219,11 +282,10 @@ class DashboardController extends Controller
                 abort(403, 'Bu işlemi görüntüleme veya işlem yapma yetkiniz bulunmamaktadır.');
             }
 
-            // 2. YENİ: Etiket yetkisi kontrolü (Adam PDF olarak indirmesin diye)
+            // 2. Etiket yetkisi kontrolü
             if ($transaction->tags->isNotEmpty()) {
                 $izinliEtiketler = $user->allowed_tags ?? [];
                 
-                // İşlemdeki etiketlerden en az biri, adamın izinli listesinde var mı diye bak
                 $hasAllowedTag = $transaction->tags->pluck('id')->intersect($izinliEtiketler)->isNotEmpty();
                 
                 if (!$hasAllowedTag) {
