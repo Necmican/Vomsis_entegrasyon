@@ -23,10 +23,30 @@
 </nav>
 
 <div class="container-fluid px-4">
+    
+    @if(session('success'))
+        <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
+            <i class="fas fa-check-circle me-2"></i> {{ session('success') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
+
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i> {{ session('error') }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    @endif
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
             <h5 class="mb-0 fw-bold text-dark"><i class="fas fa-credit-card text-primary me-2"></i>Sanal POS Tahsilat Raporu</h5>
-        </div>
+            
+            <a href="{{ route('payment.sync') }}" 
+               class="btn btn-outline-primary btn-sm fw-bold shadow-sm" 
+               onclick="this.innerHTML='<i class=\'fas fa-sync-alt fa-spin me-1\'></i> Veriler Çekiliyor...'; this.classList.add('disabled');">
+                <i class="fas fa-cloud-download-alt me-1"></i> Verileri Vomsis'ten Çek
+            </a>
+            </div>
         <div class="card-body p-0 table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light text-secondary">
@@ -72,6 +92,8 @@
         @endif
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
 </html>

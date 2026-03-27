@@ -8,7 +8,7 @@ use App\Http\Controllers\ExportController;
 use App\Http\Controllers\PaymentController; 
 use App\Http\Controllers\TagController;
 use App\Http\Controllers\AuthController;
-use App\Http\Controllers\UserController; // EKLENDİ: Personel yönetimi için
+use App\Http\Controllers\UserController; 
 
 // ========================================================================
 // A. GUEST (MİSAFİR) ROTALARI - Sadece giriş YAPMAMIŞ kişiler görebilir
@@ -75,8 +75,8 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/odeme/bin-check', [PaymentController::class, 'binCheck'])->name('payment.bincheck');
     Route::post('/odeme/isle', [PaymentController::class, 'process'])->name('payment.process');
-    Route::post('/odeme/sonuc', [PaymentController::class, 'callback'])->name('payment.callback');
-
+    Route::get('/sanal-pos/senkronize-et', [PaymentController::class, 'syncTransactions'])->name('payment.sync');  
+    
     // ========================================================================
     // 6. GELİŞTİRİCİ TEST ROTALARI
     // ========================================================================
@@ -112,12 +112,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/test-poses', function (VomsisService $vomsisService) {
         try { return $vomsisService->syncVirtualPoses(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
     });
+    
     // ========================================================================
-    // FİZİKSEL POS (TERMİNAL) ROTALARI
-    // ========================================================================
-    Route::get('/fiziksel-pos', [\App\Http\Controllers\PhysicalPosController::class, 'index'])->name('physical_pos.index');
-    Route::get('/fiziksel-pos/senkronize', [\App\Http\Controllers\PhysicalPosController::class, 'sync'])->name('physical_pos.sync');
-// ========================================================================
     // FİZİKSEL POS (TERMİNAL) ROTALARI
     // ========================================================================
     Route::get('/fiziksel-pos', [\App\Http\Controllers\PhysicalPosController::class, 'index'])->name('physical_pos.index');
@@ -125,7 +121,7 @@ Route::middleware('auth')->group(function () {
     
     // YENİ EKLENEN ROTA: Belirli bir cihazın içindeki hareketleri çeker
     Route::get('/fiziksel-pos/{id}/islemleri-cek', [\App\Http\Controllers\PhysicalPosController::class, 'syncTransactions'])->name('physical_pos.sync_transactions');
-// FİZİKSEL POS İŞLEMLERİNİ GÖRÜNTÜLEME EKRANI
+    // FİZİKSEL POS İŞLEMLERİNİ GÖRÜNTÜLEME EKRANI
     Route::get('/fiziksel-pos/{id}/islemler', [\App\Http\Controllers\PhysicalPosController::class, 'showTransactions'])->name('physical_pos.transactions');
     Route::post('/islem/toplu-etiket-ekle', [App\Http\Controllers\TagController::class, 'bulkAttachTags']);
     Route::post('/banka-ayarlari-kaydet', [App\Http\Controllers\DashboardController::class, 'updateBankSettings'])->name('bank.settings.update');
@@ -134,7 +130,9 @@ Route::middleware('auth')->group(function () {
     // 7. YAPAY ZEKA ASİSTANI (AI CHATBOT)
     // ========================================================================
     Route::post('/ai/ask', [App\Http\Controllers\AiController::class, 'ask'])->name('ai.ask');
-
-
-    
     });
+
+// ========================================================================
+// PUBLIC (3D Secure CALLBACK) - Banka/ACS cross-site POST yapar, auth yok
+// ========================================================================
+Route::post('/odeme/sonuc', [PaymentController::class, 'callback'])->name('payment.callback');

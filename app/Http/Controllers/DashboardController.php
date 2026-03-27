@@ -26,13 +26,12 @@ class DashboardController extends Controller
         // ========================================================================
         // YENİ: YÖNETİM PANELİ İÇİN TÜM BANKALARI ÇEK (Sadece Admin Görür)
         // ========================================================================
-        $allSettingsBanks = $isAdmin ? Bank::with('bankAccounts')->orderBy('bank_name')->get() : collect();
+        $allSettingsBanks = $isAdmin ? \App\Models\Bank::with('bankAccounts')->orderBy('bank_name')->get() : collect();
 
         // ========================================================================
         // 2. SOL MENÜ İÇİN BANKALARI ÇEK (Görünürlük ve Yetki Filtreli)
         // ========================================================================
-        // Sadece is_visible = true olan bankaları ve onların is_visible = true olan hesaplarını getir.
-        $banksQuery = Bank::with(['bankAccounts' => function($q) {
+        $banksQuery = \App\Models\Bank::with(['bankAccounts' => function($q) {
             $q->where('is_visible', true);
         }])->where('is_visible', true)->orderBy('bank_name');
 
@@ -74,8 +73,7 @@ class DashboardController extends Controller
         // ========================================================================
         // 4. GENEL KASA TOPLAMLARI (GÖRÜNÜRLÜK VE KASAYA DAHİL ETME FİLTRELİ)
         // ========================================================================
-        // Sadece bankası görünür olan, hesabı görünür olan VE kendisi kasaya dahil olanları topla.
-        $totalsQuery = BankAccount::where('include_in_totals', true)
+        $totalsQuery = \App\Models\BankAccount::where('include_in_totals', true)
                                   ->where('is_visible', true)
                                   ->whereHas('bank', function($q) {
                                       $q->where('is_visible', true);
@@ -95,7 +93,6 @@ class DashboardController extends Controller
         $activeBankAccounts = collect();
 
         if ($activeBank) {
-            // Sadece görünür hesapları listele
             $activeBankAccounts = $activeBank->bankAccounts->where('is_visible', true);
             $activeBankSummary = $activeBankAccounts->groupBy('currency')->map(function ($accounts) {
                 return [
@@ -108,9 +105,8 @@ class DashboardController extends Controller
         // ========================================================================
         // 6. ANA İŞLEM (TRANSACTION) SORGUSUNU BAŞLAT
         // ========================================================================
-        $query = Transaction::with(['bankAccount.bank', 'transactionType', 'tags']);
+        $query = \App\Models\Transaction::with(['bankAccount.bank', 'transactionType', 'tags']);
 
-        // GÜVENLİK VE GÖRÜNÜRLÜK: Sadece Görünür Banka ve Görünür Hesapların işlemlerini çek!
         $query->whereHas('bankAccount', function ($q) {
             $q->where('is_visible', true)->whereHas('bank', function($subQ) {
                 $subQ->where('is_visible', true);
@@ -118,12 +114,10 @@ class DashboardController extends Controller
         });
 
         if (!$isAdmin) {
-            // A. Banka Yetki Kilidi
             $query->whereHas('bankAccount', function ($q) use ($izinliBankalar) {
                 $q->whereIn('bank_id', $izinliBankalar);
             });
 
-            // B. Etiket Yetki Kilidi (Etiketsizler VEYA yetkili olduğu etiketler)
             $query->where(function ($q) use ($izinliEtiketler) {
                 $q->doesntHave('tags')
                   ->orWhereHas('tags', function ($subQ) use ($izinliEtiketler) {
@@ -139,15 +133,52 @@ class DashboardController extends Controller
         }
 
         // ========================================================================
-        // 7. KULLANICI ARAMA VE DİNAMİK FİLTRELERİ
+        // 7. KULLANICI ARAMA VE ÇOKLU AI FİLTRELERİ (ANA TABLO SORGUSU)
         // ========================================================================
         if ($request->filled('search')) {
-            $query->where('description', 'like', '%' . $request->search . '%');
+            // Arama kelimesini boşluklardan parçala (Örn: "Kardeşler gıda" => ["Kardeşler", "gıda"])
+            $searchTerms = explode(' ', $request->search);
+            
+            $query->where(function($q) use ($searchTerms) {
+                foreach ($searchTerms as $term) {
+                    $term = trim($term);
+                    if (!empty($term)) {
+                        // Her kelime için: Ya açıklamada geçsin YA DA banka adında geçsin
+                        $q->where(function($subQ) use ($term) {
+                            $subQ->where('description', 'like', '%' . $term . '%')
+                                 ->orWhereHas('bankAccount.bank', function($bankQ) use ($term) {
+                                     $bankQ->where('bank_name', 'like', '%' . $term . '%');
+                                 });
+                        });
+                    }
+                }
+            });
         }
+        
         if ($request->filled('currency')) {
             $query->whereHas('bankAccount', function ($q) use ($request) {
                 $q->where('currency', $request->currency);
             });
+        }
+        
+        if ($request->filled('start_date')) {
+            $query->whereDate('transaction_date', '>=', $request->start_date);
+        }
+        if ($request->filled('end_date')) {
+            $query->whereDate('transaction_date', '<=', $request->end_date);
+        }
+        if ($request->filled('tag_name')) {
+            $tagName = $request->tag_name;
+            $query->whereHas('tags', function ($q) use ($tagName) {
+                $q->where('name', 'like', '%' . $tagName . '%');
+            });
+        }
+        if ($request->filled('type_name')) {
+            if (strtolower($request->type_name) === 'gelir') {
+                $query->where('amount', '>', 0);
+            } elseif (strtolower($request->type_name) === 'gider') {
+                $query->where('amount', '<', 0);
+            }
         }
         if ($request->filled('type_code')) {
             $query->where('transaction_type_code', $request->type_code);
@@ -162,20 +193,18 @@ class DashboardController extends Controller
         }
 
         // ========================================================================
-        // 8. DİNAMİK GELİR/GİDER HESABI (KASA DAHİLİYET KORUMALI)
+        // 8. DİNAMİK GELİR/GİDER HESABI (ÖZET KUTULARI)
         // ========================================================================
-        $summaryQuery = Transaction::join('bank_accounts', 'transactions.bank_account_id', '=', 'bank_accounts.id')
+
+
+        $summaryQuery = \App\Models\Transaction::join('bank_accounts', 'transactions.bank_account_id', '=', 'bank_accounts.id')
             ->join('banks', 'bank_accounts.bank_id', '=', 'banks.id')
-            // YENİ SÜZGEÇ: Kasaya dahil edilmeyen veya gizli olanların parasını sayma!
             ->where('bank_accounts.include_in_totals', true)
             ->where('bank_accounts.is_visible', true)
             ->where('banks.is_visible', true);
 
         if (!$isAdmin) {
-            // A. Banka Yetki Kilidi
             $summaryQuery->whereIn('bank_accounts.bank_id', $izinliBankalar);
-
-            // B. Etiket Yetki Kilidi
             $summaryQuery->where(function ($q) use ($izinliEtiketler) {
                 $q->doesntHave('tags')
                   ->orWhereHas('tags', function ($subQ) use ($izinliEtiketler) {
@@ -189,10 +218,44 @@ class DashboardController extends Controller
         }
 
         if ($request->filled('search')) {
-            $summaryQuery->where('transactions.description', 'like', '%' . $request->search . '%');
+            $searchTerms = explode(' ', $request->search);
+            
+            $summaryQuery->where(function($q) use ($searchTerms) {
+                foreach ($searchTerms as $term) {
+                    $term = trim($term);
+                    if (!empty($term)) {
+                        $q->where(function($subQ) use ($term) {
+                            $subQ->where('transactions.description', 'like', '%' . $term . '%')
+                                 ->orWhere('banks.bank_name', 'like', '%' . $term . '%');
+                        });
+                    }
+                }
+            });
         }
+        
         if ($request->filled('currency')) {
             $summaryQuery->where('bank_accounts.currency', $request->currency);
+        }
+        if ($request->filled('start_date')) {
+            $summaryQuery->whereDate('transactions.transaction_date', '>=', $request->start_date);
+        }
+        if ($request->filled('end_date')) {
+            $summaryQuery->whereDate('transactions.transaction_date', '<=', $request->end_date);
+        }
+        if ($request->filled('tag_name')) {
+            $tagName = $request->tag_name;
+            if (!$request->filled('tag_id')) {
+                $summaryQuery->join('pos_transaction_tag', 'transactions.id', '=', 'pos_transaction_tag.pos_transaction_id');
+            }
+            $summaryQuery->join('tags', 'pos_transaction_tag.tag_id', '=', 'tags.id')
+                         ->where('tags.name', 'like', '%' . $tagName . '%');
+        }
+        if ($request->filled('type_name')) {
+            if (strtolower($request->type_name) === 'gelir') {
+                $summaryQuery->where('transactions.amount', '>', 0);
+            } elseif (strtolower($request->type_name) === 'gider') {
+                $summaryQuery->where('transactions.amount', '<', 0);
+            }
         }
         if ($request->filled('type_code')) {
             $summaryQuery->where('transactions.transaction_type_code', $request->type_code);
@@ -201,8 +264,10 @@ class DashboardController extends Controller
             $summaryQuery->where('transactions.bank_account_id', $request->account_id);
         }
         if ($request->filled('tag_id')) {
-            $summaryQuery->join('pos_transaction_tag', 'transactions.id', '=', 'pos_transaction_tag.pos_transaction_id')
-                         ->where('pos_transaction_tag.tag_id', $request->tag_id);
+            if (!$request->filled('tag_name')) {
+                 $summaryQuery->join('pos_transaction_tag', 'transactions.id', '=', 'pos_transaction_tag.pos_transaction_id');
+            }
+            $summaryQuery->where('pos_transaction_tag.tag_id', $request->tag_id);
         }
 
         $filteredSummaries = $summaryQuery
@@ -215,12 +280,12 @@ class DashboardController extends Controller
         // ========================================================================
         // 9. SABİT LİSTELER VE SAYFALAMA
         // ========================================================================
-        $transactionTypes = TransactionType::orderBy('name')->get(); 
+        $transactionTypes = \App\Models\TransactionType::orderBy('name')->get(); 
         
         if ($isAdmin) {
-            $allTags = Tag::orderBy('name')->get(); 
+            $allTags = \App\Models\Tag::orderBy('name')->get(); 
         } else {
-            $allTags = Tag::whereIn('id', $izinliEtiketler)->orderBy('name')->get();
+            $allTags = \App\Models\Tag::whereIn('id', $izinliEtiketler)->orderBy('name')->get();
         }
 
         $transactions = $query->orderBy('transaction_date', 'desc')
@@ -233,39 +298,42 @@ class DashboardController extends Controller
             'allTags', 'allSettingsBanks'
         ));
     }
-
-    // ========================================================================
-    // YENİ: BANKA VE HESAP AYARLARINI KAYDETME (ADMIN ONLY)
+   // ========================================================================
+    // BANKA VE KASA AYARLARINI KAYDET
     // ========================================================================
     public function updateBankSettings(Request $request)
     {
-        if (auth()->user()->role !== 'admin') {
-            abort(403, 'Sadece yöneticiler banka ayarlarını değiştirebilir.');
+        try {
+            
+            \App\Models\Bank::query()->update(['is_visible' => false]);
+            \App\Models\BankAccount::query()->update(['is_visible' => false, 'include_in_totals' => false]);
+
+            // 2. HTML Formundan gelen gelişmiş dizileri (klasörleri) alıyoruz
+            $banks = $request->input('banks', []);
+            $accounts = $request->input('accounts', []);
+
+            // 3. İçinde işaret (1) olan şalterlerin ID'lerini zekice ayıklıyoruz
+            $visibleBankIds = array_keys(array_filter($banks, function($b) { return isset($b['is_visible']); }));
+            
+            $visibleAccountIds = array_keys(array_filter($accounts, function($a) { return isset($a['is_visible']); }));
+            $includeTotalIds = array_keys(array_filter($accounts, function($a) { return isset($a['include_in_totals']); }));
+
+            // 4. Sadece açık olan şalterlerin ID'lerini veritabanında "Açık (True)" yapıyoruz
+            if (!empty($visibleBankIds)) {
+                \App\Models\Bank::whereIn('id', $visibleBankIds)->update(['is_visible' => true]);
+            }
+            if (!empty($visibleAccountIds)) {
+                \App\Models\BankAccount::whereIn('id', $visibleAccountIds)->update(['is_visible' => true]);
+            }
+            if (!empty($includeTotalIds)) {
+                \App\Models\BankAccount::whereIn('id', $includeTotalIds)->update(['include_in_totals' => true]);
+            }
+
+            return redirect()->back()->with('success', 'Kasa ayarları başarıyla güncellendi!');
+
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Ayarlar kaydedilirken bir hata oluştu: ' . $e->getMessage());
         }
-
-        $bankSettings = $request->input('banks', []);
-        $accountSettings = $request->input('accounts', []);
-
-        // Önce tüm bankaları ve hesapları "Kapalı" yapıyoruz
-        Bank::query()->update(['is_visible' => false]);
-        BankAccount::query()->update(['is_visible' => false, 'include_in_totals' => false]);
-
-        // Formdan "Açık" olarak gelen Bankaları güncelle
-        foreach ($bankSettings as $bankId => $settings) {
-            Bank::where('id', $bankId)->update([
-                'is_visible' => isset($settings['is_visible'])
-            ]);
-        }
-
-        // Formdan "Açık" olarak gelen Hesapları güncelle
-        foreach ($accountSettings as $accId => $settings) {
-            BankAccount::where('id', $accId)->update([
-                'is_visible'        => isset($settings['is_visible']),
-                'include_in_totals' => isset($settings['include_in_totals'])
-            ]);
-        }
-
-        return back()->with('mesaj', '🏦 Banka ve Kasa ayarları başarıyla güncellendi.');
     }
 
     // ========================================================================
@@ -343,4 +411,5 @@ class DashboardController extends Controller
 
         return back()->with('mesaj', "📧 Dekont başarıyla <b>{$request->email}</b> adresine gönderildi.");
     }
+    
 }

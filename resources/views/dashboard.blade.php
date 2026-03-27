@@ -929,7 +929,7 @@
         });
 
         // ==========================================
-        // YENİ: HAFIZALI (SEPET MANTIKLI) TOPLU SEÇİM MOTORU
+        // HAFIZALI (SEPET MANTIKLI) TOPLU SEÇİM MOTORU
         // ==========================================
         const selectAllBtn = document.getElementById('selectAllTransactions');
         const transactionCheckboxes = document.querySelectorAll('.transaction-checkbox');
@@ -940,10 +940,8 @@
         const bulkTagForm = document.getElementById('bulkTagForm');
         const clearSelectionBtn = document.getElementById('clearSelectionBtn');
 
-        // 1. Tarayıcı hafızasındaki (Sepetteki) ID'leri çek (Yoksa boş dizi oluştur)
         let selectedTransactions = JSON.parse(sessionStorage.getItem('vomsis_selected_tx')) || [];
 
-        // 2. Arayüzü ve Çubuğu Güncelleyen Fonksiyon
         function updateBulkActionState() {
             const count = selectedTransactions.length;
 
@@ -951,7 +949,6 @@
                 bulkActionContainer.classList.remove('d-none');
                 selectedCountText.innerText = count + " işlem seçildi (Tüm Sayfalardan)";
                 
-                // Hem Ekleme hem Çıkarma modallarındaki rakamları güncelle
                 if(modalSelectedCount) modalSelectedCount.innerText = count;
                 const modalRemoveCount = document.getElementById('modalRemoveSelectedCount');
                 if(modalRemoveCount) modalRemoveCount.innerText = count;
@@ -962,37 +959,30 @@
             }
         }
 
-        // 3. Sayfa yüklendiğinde, eğer bu sayfedaki işlemler sepette varsa kutucuklarını otomatik tikle
         transactionCheckboxes.forEach(cb => {
             if (selectedTransactions.includes(cb.value)) {
                 cb.checked = true;
             }
         });
         
-        // Tümünü seç butonunun durumunu ayarla (Bu sayfadakilerin hepsi seçiliyse tikle)
         if (selectAllBtn && transactionCheckboxes.length > 0) {
             selectAllBtn.checked = Array.from(transactionCheckboxes).every(c => c.checked);
         }
         
-        updateBulkActionState(); // Çubuğu göster/gizle
+        updateBulkActionState(); 
 
-        // 4. Kutucuklara Tıklanma Olayı (Hafızaya Yaz/Sil)
         transactionCheckboxes.forEach(checkbox => {
             checkbox.addEventListener('change', function() {
                 if (this.checked) {
-                    // Sepette yoksa ekle
                     if (!selectedTransactions.includes(this.value)) {
                         selectedTransactions.push(this.value);
                     }
                 } else {
-                    // Tiki kaldırıldıysa sepetten sil
                     selectedTransactions = selectedTransactions.filter(id => id !== this.value);
                 }
                 
-                // Sepeti tarayıcı hafızasına kaydet
                 sessionStorage.setItem('vomsis_selected_tx', JSON.stringify(selectedTransactions));
 
-                // "Tümünü Seç" butonunu güncelle
                 if (selectAllBtn) {
                     selectAllBtn.checked = Array.from(transactionCheckboxes).every(c => c.checked);
                 }
@@ -1000,7 +990,6 @@
             });
         });
 
-        // 5. "Tümünü Seç" Butonuna Tıklanma Olayı
         if (selectAllBtn) {
             const selectAllCell = selectAllBtn.closest('.action-checkbox-cell');
             if (selectAllCell) {
@@ -1016,7 +1005,6 @@
                 transactionCheckboxes.forEach(checkbox => {
                     checkbox.checked = selectAllBtn.checked;
                     
-                    // Sepete Ekle veya Sil
                     if (checkbox.checked) {
                         if (!selectedTransactions.includes(checkbox.value)) {
                             selectedTransactions.push(checkbox.value);
@@ -1031,7 +1019,6 @@
             });
         }
 
-        // 6. Satıra (Boşluğa) Tıklanınca Kutucuğu İşaretleme veya Modalı Açma
         document.querySelectorAll('.table-row-clickable').forEach(row => {
             row.addEventListener('click', function(e) {
                 if (e.target.closest('.action-checkbox-cell')) {
@@ -1039,7 +1026,7 @@
                         const checkbox = this.querySelector('.transaction-checkbox');
                         if (checkbox) {
                             checkbox.checked = !checkbox.checked;
-                            checkbox.dispatchEvent(new Event('change')); // Değişimi tetikle ki hafızaya yazılsın
+                            checkbox.dispatchEvent(new Event('change')); 
                         }
                     }
                     return; 
@@ -1054,13 +1041,11 @@
             });
         });
 
-        // 7. "Temizle" Butonuna Tıklayınca Hafızayı Sıfırla
         if (clearSelectionBtn) {
             clearSelectionBtn.addEventListener('click', function() {
-                selectedTransactions = []; // Sepeti boşalt
-                sessionStorage.removeItem('vomsis_selected_tx'); // Hafızayı sil
+                selectedTransactions = []; 
+                sessionStorage.removeItem('vomsis_selected_tx'); 
                 
-                // Ekrandaki tikleri kaldır
                 transactionCheckboxes.forEach(cb => cb.checked = false);
                 if (selectAllBtn) selectAllBtn.checked = false;
                 
@@ -1068,12 +1053,10 @@
             });
         }
 
-        // 8. Form Gönderilmeden Hemen Önce (Hafızadaki Tüm ID'leri Forma Zımbala)
         if(bulkTagForm) {
             bulkTagForm.addEventListener('submit', function(e) {
                 hiddenTransactionInputs.innerHTML = '';
                 
-                // Sadece ekrandakileri değil, HAFIZADAKİ tüm ID'leri gönder
                 selectedTransactions.forEach(id => {
                     const input = document.createElement('input');
                     input.type = 'hidden';
@@ -1082,12 +1065,10 @@
                     hiddenTransactionInputs.appendChild(input);
                 });
 
-                // Form başarıyla gittikten sonra bir dahaki sefere sepet boş olsun diye hafızayı temizle
                 sessionStorage.removeItem('vomsis_selected_tx');
             });
         }
 
-        // YENİ: Toplu Çıkarma Formu Gönderilmeden Önce Çalışacak Motor
         const bulkRemoveTagForm = document.getElementById('bulkRemoveTagForm');
         const hiddenRemoveTransactionInputs = document.getElementById('hiddenRemoveTransactionInputs');
 
@@ -1095,7 +1076,6 @@
             bulkRemoveTagForm.addEventListener('submit', function(e) {
                 hiddenRemoveTransactionInputs.innerHTML = '';
                 
-                // Hafızadaki tüm ID'leri gönder
                 selectedTransactions.forEach(id => {
                     const input = document.createElement('input');
                     input.type = 'hidden';
@@ -1109,7 +1089,7 @@
         }
 
         // ==========================================
-        // YENİ: YAPAY ZEKA ASİSTANI (CHATBOT) MOTORU
+        // YAPAY ZEKA ASİSTANI (CHATBOT) MOTORU - ÇOKLU AJAN VERSİYONU
         // ==========================================
         const triggerBtn = document.getElementById('ai-trigger-btn');
         const closeBtn = document.getElementById('ai-close-btn');
@@ -1119,7 +1099,6 @@
         const messagesContainer = document.getElementById('ai-messages-container');
         const typingIndicator = document.getElementById('ai-typing');
 
-        // Pencereyi Aç / Kapat
         if (triggerBtn && closeBtn && chatWindow) {
             triggerBtn.addEventListener('click', () => {
                 chatWindow.style.display = chatWindow.style.display === 'flex' ? 'none' : 'flex';
@@ -1128,35 +1107,29 @@
             closeBtn.addEventListener('click', () => chatWindow.style.display = 'none');
         }
 
-        // Mesajı Ekrana Çizen Fonksiyon
         function appendMessage(text, sender) {
             const msgDiv = document.createElement('div');
             msgDiv.classList.add('chat-msg', sender === 'user' ? 'msg-user' : 'msg-ai');
-            msgDiv.innerHTML = text.replace(/\n/g, '<br>'); // Satır atlamalarını HTML'e çevir
+            msgDiv.innerHTML = text.replace(/\n/g, '<br>'); 
             
-            // Mesajı "Yazıyor..." uyarısının hemen üstüne ekle
             messagesContainer.insertBefore(msgDiv, typingIndicator);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight; // En alta kaydır
+            messagesContainer.scrollTop = messagesContainer.scrollHeight; 
         }
 
-        // Form Gönderildiğinde (Enter'a basılınca)
         if (chatForm) {
             chatForm.addEventListener('submit', async function(e) {
                 e.preventDefault();
                 const message = inputField.value.trim();
                 if (!message) return;
 
-                // 1. Kullanıcı mesajını ekrana bas ve inputu temizle
                 appendMessage(message, 'user');
                 inputField.value = '';
-                inputField.disabled = true; // Çifte gönderimi engelle
+                inputField.disabled = true; 
                 
-                // 2. "Yazıyor..." efektini göster
                 typingIndicator.style.display = 'block';
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
                 try {
-                    // 3. Laravel (AiController) sunucusuna AJAX isteği at
                     const response = await fetch('{{ route("ai.ask") }}', {
                         method: 'POST',
                         headers: {
@@ -1167,19 +1140,45 @@
                     });
 
                     const data = await response.json();
-                    
-                    // 4. Yazıyor efektini gizle ve AI cevabını ekrana bas
                     typingIndicator.style.display = 'none';
                     
                     if(data.status === 'success') {
+                        // 1. AI'ın sözlü cevabını ekrana bas (Örn: "Sizin için filtreledim.")
                         appendMessage(data.reply, 'ai');
+
+                        // ==========================================
+                        // 2. AJAN AKSİYONU GELDİ Mİ? (SİHİRLİ KISIM)
+                        // ==========================================
+                        // Eğer AI bir filtreleme emri verdiyse VE filters objesi doluysa çalışır
+                        if (data.action === 'filter' && data.filters) {
+                            console.log("AI Filtreleme Sepeti Yolladı:", data.filters);
+                            
+                            // Kullanıcıya mesajı okuması için 1.5 saniye mühlet ver, sonra sayfayı yönlendir
+                            setTimeout(() => {
+                                // Yeni ve temiz bir URL oluşturuyoruz (mevcut parametreleri siliyoruz ki birbirine girmesin)
+                                let newUrl = new URL(window.location.origin + '/dashboard');
+                                
+                                // JSON Sepetindeki dolu (null olmayan) her değeri URL'ye parametre olarak ekle
+                                if (data.filters.search)     newUrl.searchParams.set('search', data.filters.search);
+                                if (data.filters.start_date) newUrl.searchParams.set('start_date', data.filters.start_date);
+                                if (data.filters.end_date)   newUrl.searchParams.set('end_date', data.filters.end_date);
+                                if (data.filters.currency)   newUrl.searchParams.set('currency', data.filters.currency);
+                                if (data.filters.tag_name)   newUrl.searchParams.set('tag_name', data.filters.tag_name);
+                                if (data.filters.type_name)  newUrl.searchParams.set('type_name', data.filters.type_name);
+                                
+                                // Sayfayı bu yeni, AI tarafından oluşturulmuş linkle yenile!
+                                window.location.href = newUrl.toString();
+                            }, 1500); 
+                        }
+
                     } else {
                         appendMessage('❌ Bir hata oluştu: ' + data.reply, 'ai');
                     }
 
                 } catch (error) {
                     typingIndicator.style.display = 'none';
-                    appendMessage('❌ Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.', 'ai');
+                    appendMessage('❌ Sunucuya bağlanılamadı. Lütfen Ollama/Linux sunucusunun çalıştığından emin olun.', 'ai');
+                    console.error("AI Fetch Hatası:", error);
                 } finally {
                     inputField.disabled = false;
                     inputField.focus();

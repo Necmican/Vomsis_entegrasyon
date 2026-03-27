@@ -84,6 +84,7 @@
                             <label class="form-label text-muted fw-bold small text-primary"><i class="fas fa-hand-holding-usd me-1"></i> Taksit Seçenekleri</label>
                             <select name="installment" id="installmentSelect" class="form-select border-primary fw-bold" style="background-color: #f8fbff; color: #0043a8;">
                                 </select>
+                            <input type="hidden" name="installment_ratio" id="installmentRatio" value="">
                         </div>
 
                         <div class="row mb-4">
@@ -99,7 +100,7 @@
                                     <select name="expire_year" class="form-select" required>
                                         <option value="">Yıl</option>
                                         @for($i=date('Y'); $i<=date('Y')+10; $i++)
-                                            <option value="{{ substr($i, -2) }}">{{ substr($i, -2) }}</option>
+                                            <option value="{{ $i }}">{{ $i }}</option>
                                         @endfor
                                     </select>
                                 </div>
@@ -134,6 +135,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const cardFamilyText = document.getElementById('cardFamilyText');
     const installmentsWrapper = document.getElementById('installmentsWrapper');
     const installmentSelect = document.getElementById('installmentSelect');
+    const installmentRatioInput = document.getElementById('installmentRatio');
     
     // Laravel CSRF Token
     const csrfToken = '{{ csrf_token() }}';
@@ -152,6 +154,7 @@ document.addEventListener('DOMContentLoaded', function() {
             cardInfoBox.classList.add('d-none');
             installmentsWrapper.classList.add('d-none');
             installmentSelect.innerHTML = '';
+            installmentRatioInput.value = '';
         }
     });
 
@@ -163,7 +166,7 @@ document.addEventListener('DOMContentLoaded', function() {
         installmentsWrapper.classList.add('d-none');
 
         // Arka plana istek at
-        fetch('{{ route('payment.bincheck') }}', {
+        fetch('{{ route('payment.bincheck', [], false) }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -187,6 +190,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 installments.forEach(inst => {
                     let option = document.createElement('option');
                     option.value = inst.installment;
+                    option.dataset.ratio = inst.ratio ?? '';
                     
                     // Vade farkı varsa göster
                     let vadeFarki = inst.ratio !== "0" ? ` (+%${inst.ratio} Fark)` : '';
@@ -198,6 +202,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Taksit kutusunu aç
                 installmentsWrapper.classList.remove('d-none');
+
+                const selected = installmentSelect.options[installmentSelect.selectedIndex];
+                installmentRatioInput.value = selected?.dataset?.ratio ?? '';
             } else {
                 // Artık Vomsis'in gönderdiği mesajı ekrana basıyoruz!
                 bankNameText.innerHTML = '<span class="text-danger"><i class="fas fa-exclamation-circle"></i> ' + (res.message || 'Banka tespit edilemedi.') + '</span>';
@@ -208,6 +215,11 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('BIN Check Error:', error);
         });
     }
+
+    installmentSelect.addEventListener('change', function () {
+        const selected = installmentSelect.options[installmentSelect.selectedIndex];
+        installmentRatioInput.value = selected?.dataset?.ratio ?? '';
+    });
 });
 </script>
 
