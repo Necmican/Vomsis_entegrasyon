@@ -54,6 +54,19 @@ class DashboardController extends Controller
         }
 
         $banks = $banksQuery->get();
+        
+        // Sol menüde (sidebar) gösterilen hesapların bakiyelerini de güncel işlem bakiyesiyle eziyoruz
+        foreach ($banks as $bank) {
+            foreach ($bank->bankAccounts as $acc) {
+                $latestTxn = \App\Models\Transaction::where('bank_account_id', $acc->id)
+                    ->orderBy('transaction_date', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->first();
+                if ($latestTxn) {
+                    $acc->balance = $latestTxn->balance;
+                }
+            }
+        }
 
         // ========================================================================
         // 3. AKTİF BANKA (SEÇİLEN VEYA VARSAYILAN) KONTROLÜ VE GÜVENLİK
@@ -77,14 +90,26 @@ class DashboardController extends Controller
                                   ->where('is_visible', true)
                                   ->whereHas('bank', function($q) {
                                       $q->where('is_visible', true);
-                                  })
-                                  ->selectRaw('currency, SUM(balance) as total')
-                                  ->groupBy('currency');
+                                  });
         
         if (!$isAdmin) {
             $totalsQuery->whereIn('bank_id', $izinliBankalar);
         }
-        $totals = $totalsQuery->pluck('total', 'currency');
+        
+        $accountsForTotals = $totalsQuery->get();
+        $totalsArray = [];
+        foreach ($accountsForTotals as $acc) {
+            $latestTxn = \App\Models\Transaction::where('bank_account_id', $acc->id)
+                ->orderBy('transaction_date', 'desc')
+                ->orderBy('id', 'desc')
+                ->first();
+            $gercekBakiye = $latestTxn ? $latestTxn->balance : $acc->balance;
+            if (!isset($totalsArray[$acc->currency])) {
+                $totalsArray[$acc->currency] = 0;
+            }
+            $totalsArray[$acc->currency] += $gercekBakiye;
+        }
+        $totals = collect($totalsArray);
 
         // ========================================================================
         // 5. AKTİF BANKA DETAYLARI (HESAPLAR VE KURLAR)
@@ -94,6 +119,18 @@ class DashboardController extends Controller
 
         if ($activeBank) {
             $activeBankAccounts = $activeBank->bankAccounts->where('is_visible', true);
+            
+            // Hesap bakiyelerini gelen son işlem verisiyle dinamik güncelliyoruz
+            foreach ($activeBankAccounts as $acc) {
+                $latestTxn = \App\Models\Transaction::where('bank_account_id', $acc->id)
+                    ->orderBy('transaction_date', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->first();
+                if ($latestTxn) {
+                    $acc->balance = $latestTxn->balance; // View'da da güncel gerçek bakiye görünsün
+                }
+            }
+
             $activeBankSummary = $activeBankAccounts->groupBy('currency')->map(function ($accounts) {
                 return [
                     'count' => $accounts->count(),
@@ -337,7 +374,7 @@ class DashboardController extends Controller
     }
 
     // ========================================================================
-    // SAĞ TIK: GÖRÜNTÜLE, YAZDIR, PDF İNDİR VE E-POSTA İŞLEMLERİ (GÜVENLİ)
+    // Sağ Tık: GÖRÜNTÜLE, YAZDIR, PDF İNDİR VE E-POSTA İŞLEMLERİ (GÜVENLİ)
     // ========================================================================
 
     private function checkTransactionAccess($transaction)

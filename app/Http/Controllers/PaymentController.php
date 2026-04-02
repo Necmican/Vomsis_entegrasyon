@@ -289,7 +289,6 @@ class PaymentController extends Controller
     {
         \Log::info('Vomsis 3D Dönüşü (Callback) Geldi:', $request->all());
 
-        // Banka/ACS/Vomsis farklı alan adları gönderebilir; olabildiğince esnek yakala
         $orderId = $request->input('order_id')
             ?? $request->input('referanceNo')
             ?? $request->input('referenceNo')

@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL; // <-- SİHİRLİ SATIRIMIZ BURADA
+use Illuminate\Pagination\Paginator; // <-- SAYFALAMA DÜZELTİCİ EKLENDİ
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -20,9 +21,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // NGROK KULLANILIYORSA SİSTEMİ ZORLA HTTPS YAP
-        if (str_contains(config('app.url'), 'ngrok')) {
+        if (config('app.env') !== 'local' || request()->server('HTTP_X_FORWARDED_PROTO') == 'https') {
             URL::forceScheme('https');
         }
+        
+        // Laravel varsayılan Tailwind sayfalamasını projedeki Bootstrap 5 temasına uyduruyoruz
+        Paginator::useBootstrapFive();
     }
 }

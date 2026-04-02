@@ -18,7 +18,7 @@ class AiController extends Controller
         $systemPrompt = $this->buildRAGContext(); 
 
         try {
-            $response = Http::timeout(120)->post('http://127.0.0.1:11434/api/chat', [
+            $response = Http::timeout(120)->post('http://host.docker.internal:11434/api/chat', [
                 'model' => 'llama3',
                 'messages' => [
                     ['role' => 'system', 'content' => $systemPrompt], 
@@ -91,9 +91,9 @@ class AiController extends Controller
      */
     private function buildRAGContext()
     {
-        // Test için tarihleri 20 Ocak ve 26 Ocak olarak sabitliyoruz
-        $bugun = \Carbon\Carbon::create(2026, 1, 26, 23, 59, 59); 
-        $birHaftaOnce = \Carbon\Carbon::create(2026, 1, 20, 0, 0, 0);
+        // Tüm aralık için RAG bağlam tarihlerini güncelliyoruz (9 Aralık 2025 - 9 Şubat 2026)
+        $bugun = \Carbon\Carbon::create(2026, 2, 9, 23, 59, 59); 
+        $birHaftaOnce = \Carbon\Carbon::create(2025, 12, 9, 0, 0, 0);
         
         // 1. KİMLİK VE KURALLAR İNŞASI 
         $context = "Sen Vomsis şirketinin resmi, zeki ve analitik finansal asistanısın.\n";
@@ -114,7 +114,13 @@ class AiController extends Controller
         foreach ($banks as $bank) {
             $context .= "🏦 {$bank->bank_name}:\n";
             foreach ($bank->bankAccounts as $acc) {
-                $bakiye = number_format($acc->balance, 2, ',', '.');
+                // Sadece statik tabloyu değil, çekilen son işlemi sorguluyoruz
+                $latestTxn = \App\Models\Transaction::where('bank_account_id', $acc->id)
+                    ->orderBy('transaction_date', 'desc')
+                    ->first();
+                $gercekBakiye = $latestTxn ? $latestTxn->balance : $acc->balance;
+                
+                $bakiye = number_format($gercekBakiye, 2, ',', '.');
                 $dahilMi = $acc->include_in_totals ? "Ana Kasaya Dahil" : "Ana Kasaya Dahil Değil";
                 
                 $context .= "   - Hesap: {$acc->account_name} | Bakiye: {$bakiye} {$acc->currency} ({$dahilMi})\n";
@@ -123,7 +129,7 @@ class AiController extends Controller
                     if (!isset($totals[$acc->currency])) {
                         $totals[$acc->currency] = 0;
                     }
-                    $totals[$acc->currency] += $acc->balance;
+                    $totals[$acc->currency] += $gercekBakiye;
                 }
             }
         }

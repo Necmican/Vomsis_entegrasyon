@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Cache;
 use Exception;
+use Illuminate\Support\Facades\Log;
 use App\Models\Bank;
 use App\Models\BankAccount;
 use App\Models\Transaction;
@@ -109,7 +110,7 @@ class VomsisService
             $data = $response->json();
             $rawBody = $response->body();
 
-            \Log::info('Vomsis transactions-list raw response', [
+            Log::info('Vomsis transactions-list raw response', [
                 'http_status' => $response->status(),
                 'root_keys' => is_array($data) ? array_keys($data) : [],
                 'success' => $data['success'] ?? $data['status'] ?? null,
@@ -138,7 +139,7 @@ class VomsisService
 
             $kaydedilenSayi = 0;
 
-            \Log::info('Vomsis transactions-list sync', [
+            Log::info('Vomsis transactions-list sync', [
                 'http_status' => $response->status(),
                 'items' => count($islemler),
                 'data_type' => is_object($rawData) ? 'object' : (is_array($rawData) ? 'array' : gettype($rawData)),
@@ -287,65 +288,91 @@ class VomsisService
     // ========================================================================
     // 6. İŞLEMLERİ ÇEK (V2)
     // ========================================================================
-    public function syncTransactions()
+    public function syncTransactions($beginDate = null, $endDate = null)
     {
         $token = $this->getToken();
         
-        $beginDate = '20-01-2026'; 
-        $endDate   = '26-01-2026';
-
-        $response = Http::withToken($token)->get("{$this->apiUrl}/transactions", [
-            'beginDate' => $beginDate,
-            'endDate'   => $endDate
-        ]);
-
-        if ($response->successful()) {
-            $data = $response->json();
-            $islemler = $data['transactions'] ?? ($data['data'] ?? []); 
-            $kayitSayisi = 0;
-
-            foreach ($islemler as $trans) {
-                $localAccount = BankAccount::where('vomsis_account_id', $trans['bank_account_id'])->first();
-
-                if (!$localAccount) continue; 
-
-                $typeCode = $trans['transaction_type'] ?? null; 
-                $aciklama = mb_strtolower($trans['description'] ?? ''); 
-
-                if (empty($typeCode)) {
-                    if (str_contains($aciklama, 'eft')) $typeCode = 'EFT';
-                    elseif (str_contains($aciklama, 'havale')) $typeCode = 'HAVALE';
-                    elseif (str_contains($aciklama, 'kredi kart')) $typeCode = 'KREDİKARTI';
-                    elseif (str_contains($aciklama, 'pos')) $typeCode = 'POS';
-                    elseif (str_contains($aciklama, 'vergi')) $typeCode = 'VERGİ';
-                    else $typeCode = 'DİĞER';
-                }
-
-                if (!empty($typeCode)) {
-                    TransactionType::updateOrCreate(
-                        ['vomsis_type_id' => $typeCode],
-                        ['name' => ucfirst($typeCode), 'code' => $typeCode]
-                    );
-                }
-
-                Transaction::updateOrCreate(
-                    ['vomsis_transaction_id' => $trans['id']],
-                    [
-                        'bank_account_id'       => $localAccount->id,
-                        'description'           => $trans['description'] ?? 'Açıklama Yok',
-                        'amount'                => $trans['amount'] ?? 0,
-                        'transaction_type_code' => $typeCode, 
-                        'type'                  => $trans['type'] ?? 'Bilinmiyor',
-                        'balance'               => $trans['current_balance'] ?? 0, // <-- HATA BURADAYDI, DÜZELTİLDİ!
-                        'transaction_date'      => $trans['system_date'] ?? now(),
-                    ]
-                );
-                $kayitSayisi++;
-            }
-
-            return $kayitSayisi . " adet işlem başarıyla çekildi!";
+        // Eğer dışarıdan tarih gelmezse, direkt deney aralığına (Aralık-Şubat) sabitlendi.
+        if (!$beginDate || !$endDate) {
+            $beginDate = '2025-12-09';
+            $endDate   = '2026-02-09';
         }
 
-        throw new Exception('İşlemler çekilemedi! Hata: ' . $response->body());
+        $startCarbon = \Carbon\Carbon::parse($beginDate);
+        $endCarbon = \Carbon\Carbon::parse($endDate);
+        
+        $currentStart = $startCarbon->copy();
+        $kayitSayisi = 0;
+
+        // Vomsis API genellikle maksimum 7 günlük aralıklara izin verdiği için, 
+        // verilen upuzun tarihi 7'şer günlük pencerelere bölerek arka arkaya API istekleri atıyoruz.
+        // DÜZELTME: API'nin YYYY-MM-DD formatını reddedip sürekli 20-26 Ocak default aralığını döndüğünü tespit ettik. 
+        // Vomsis API'si kesinlikle DD-MM-YYYY (d-m-Y) formatı bekliyor!
+        while ($currentStart->lessThanOrEqualTo($endCarbon)) {
+            $currentEnd = $currentStart->copy()->addDays(6);
+            if ($currentEnd->greaterThan($endCarbon)) {
+                $currentEnd = $endCarbon->copy();
+            }
+
+            $response = Http::withToken($token)->get("{$this->apiUrl}/transactions", [
+                'beginDate' => $currentStart->format('d-m-Y'),
+                'endDate'   => $currentEnd->format('d-m-Y')
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                $islemler = $data['transactions'] ?? ($data['data'] ?? []); 
+
+                foreach ($islemler as $trans) {
+                    $localAccount = BankAccount::where('vomsis_account_id', $trans['bank_account_id'])->first();
+
+                    if (!$localAccount) continue; 
+
+                    $typeCode = $trans['transaction_type'] ?? null; 
+                    $aciklama = mb_strtolower($trans['description'] ?? ''); 
+
+                    if (empty($typeCode)) {
+                        if (str_contains($aciklama, 'eft')) $typeCode = 'EFT';
+                        elseif (str_contains($aciklama, 'havale')) $typeCode = 'HAVALE';
+                        elseif (str_contains($aciklama, 'kredi kart')) $typeCode = 'KREDİKARTI';
+                        elseif (str_contains($aciklama, 'pos')) $typeCode = 'POS';
+                        elseif (str_contains($aciklama, 'vergi')) $typeCode = 'VERGİ';
+                        else $typeCode = 'DİĞER';
+                    }
+
+                    if (!empty($typeCode)) {
+                        TransactionType::updateOrCreate(
+                            ['vomsis_type_id' => $typeCode],
+                            ['name' => mb_strtoupper($typeCode, 'UTF-8'), 'code' => $typeCode]
+                        );
+                    }
+
+                    $islemTarihi = $trans['system_date'] ?? $currentStart->format('Y-m-d H:i:s');
+
+                    Transaction::updateOrCreate(
+                        ['vomsis_transaction_id' => $trans['id']],
+                        [
+                            'bank_account_id'       => $localAccount->id,
+                            'description'           => $trans['description'] ?? 'Açıklama Yok',
+                            'amount'                => $trans['amount'] ?? 0,
+                            'transaction_type_code' => $typeCode, 
+                            'type'                  => $trans['type'] ?? 'Bilinmiyor',
+                            'balance'               => $trans['current_balance'] ?? 0,
+                            'transaction_date'      => $islemTarihi, 
+                        ]
+                    );
+                    $kayitSayisi++;
+                }
+            } else {
+                 \Illuminate\Support\Facades\Log::error("Vomsis chunk api hatası: " . $response->body());
+            }
+
+            // Bir sonraki adıma geçmeden API limitlerine takılmamak için 1 saniye beklet (Rate-Limit koruması)
+            usleep(500000); // 0.5 saniye
+
+            $currentStart = $currentEnd->copy()->addDay();
+        }
+
+        return $kayitSayisi . " adet işlem başarıyla çekildi!";
     }
 }

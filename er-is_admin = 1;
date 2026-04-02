@@ -1,0 +1,17 @@
+[90m= [39m[34;4mApp\Models\User[39;24m {#6147
+    [34mid[39m: [35m1[39m,
+    [34mname[39m: "[32mTest User[39m",
+    [34memail[39m: "[32mtest@example.com[39m",
+    [34memail_verified_at[39m: "[32m2026-03-30 08:55:42[39m",
+    #[33mpassword[39m: "[32m$2y$12$E3xZsT6agyT0TQr2Dwnl6.4Kb7R8CHPALASkVKDB.mw0e8.32NzxG[39m",
+    [34mrole[39m: "[32muser[39m",
+    [34mcan_view_pos[39m: [35m0[39m,
+    [34mcan_view_physical_pos[39m: [35m0[39m,
+    [34mcan_create_tags[39m: [35m0[39m,
+    [34mallowed_tags[39m: [36mnull[39m,
+    [34mallowed_banks[39m: [36mnull[39m,
+    #[33mremember_token[39m: "[32mkYID8PTfn7[39m",
+    [34mcreated_at[39m: "[32m2026-03-30 08:55:44[39m",
+    [34mupdated_at[39m: "[32m2026-03-30 08:55:44[39m",
+  }
+

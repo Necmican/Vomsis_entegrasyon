@@ -9,6 +9,9 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\TagController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\UserController; 
+use Illuminate\Support\Facades\Http;
+use App\Http\Controllers\AnalyticsController;
+use Carbon\Carbon;
 
 // ========================================================================
 // A. GUEST (MİSAFİR) ROTALARI - Sadece giriş YAPMAMIŞ kişiler görebilir
@@ -130,7 +133,91 @@ Route::middleware('auth')->group(function () {
     // 7. YAPAY ZEKA ASİSTANI (AI CHATBOT)
     // ========================================================================
     Route::post('/ai/ask', [App\Http\Controllers\AiController::class, 'ask'])->name('ai.ask');
-    });
+
+    //
+    //ANALİZ ROTALARI
+    //
+
+
+
+
+    Route::get('/analizler', [AnalyticsController::class, 'index'])->name('analytics.index');
+
+    //-----------------------------------------------------------------------
+    //      test roları
+    //-----------------------------------------------------------------------
+
+    Route::get('/yapay-zeka-test', function () {
+    // 1. Örnek Geçmiş Veriler (Bunu daha sonra veritabanından çekeceğiz)
+    $dates = ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-01-09', '2026-01-10'];
+    $balances = [10000, 10500, 10200, 11000, 10800, 11500, 11200, 12000, 11800, 12500];
+
+    // 2. Python Servisine İstek At
+    // Docker kullandığımız için adres localhost değil, servis adı olan "python_ml" olur!
+    $response = Http::post('http://python_ml:8000/api/forecast', [
+        'dates' => $dates,
+        'balances' => $balances,
+        'days_to_predict' => 7 // Gelecek 7 günü tahmin et
+    ]);
+
+    // 3. Sonucu Ekrana Bas
+    if ($response->successful()) {
+        return response()->json([
+            'mesaj' => 'Mükemmel! Laravel ve Python başarıyla konuştu.',
+            'tahminler' => $response->json('forecast')
+        ]);
+    }
+
+    return response()->json([
+        'hata' => 'Bağlantı kurulamadı.', 
+        'detay' => $response->body()
+    ], 500);
+});
+
+
+
+Route::get('/gecmis-verileri-cek', function (\App\Services\VomsisService $vomsisService) {
+    // Başlangıç ve Bitiş tarihlerini belirle (Örn: 4 haftalık bir periyot)
+    $startDate = Carbon::parse('2025-12-09'); 
+    $endDate   = Carbon::parse('2026-01-06'); // Yaklaşık 4 hafta sonrası
+
+    $currentStart = $startDate->copy();
+    $log = [];
+
+    while ($currentStart->lessThan($endDate)) {
+        // 7 günlük pencere oluştur
+        $currentEnd = $currentStart->copy()->addDays(6); 
+        
+        // Eğer 7 gün eklediğimizde bitiş tarihini geçiyorsa, bitiş tarihine sabitle
+        if ($currentEnd->greaterThan($endDate)) {
+            $currentEnd = $endDate;
+        }
+
+        $baslangicStr = $currentStart->format('Y-m-d');
+        $bitisStr     = $currentEnd->format('Y-m-d');
+
+        try {
+            // DİKKAT: VomsisService içindeki metodunun tarih parametresi aldığına emin ol.
+            // Örnek: $vomsisService->syncTransactions($baslangicStr, $bitisStr);
+            
+            // Eğer senin metodun tarih almıyorsa, VomsisService içine gidip o fonksiyona 
+            // $startDate ve $endDate parametreleri eklemen gerekecek.
+            
+            $log[] = "{$baslangicStr} ile {$bitisStr} arası başarıyla çekildi.";
+        } catch (\Exception $e) {
+            $log[] = "HATA ({$baslangicStr} - {$bitisStr}): " . $e->getMessage();
+        }
+
+        // Vomsis API'sini boğmamak için her istekten sonra 2 saniye bekle (Çok Önemli!)
+        sleep(2); 
+
+        // Bir sonraki döngü için başlangıç tarihini, mevcut bitişin 1 gün sonrasına al
+        $currentStart = $currentEnd->copy()->addDay();
+    }
+
+    return $log; // İşlem bitince ekrana raporu bas
+});
+ });
 
 // ========================================================================
 // PUBLIC (3D Secure CALLBACK) - Banka/ACS cross-site POST yapar, auth yok
