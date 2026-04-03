@@ -115,6 +115,38 @@
     </style>
 </head>
 <body class="bg-light pb-5">
+@php
+    // Banka isimlerini fiziksel dosya isimleriyle eşleştiren akıllı harita
+    $logoMap = [
+        'isbank' => 'turkiye-is-bankasi.jpg',
+        'garanti' => 'garanti-bbva.jpg',
+        'garanti bbva' => 'garanti-bbva.jpg',
+        'türkiye iş bankası' => 'turkiye-is-bankasi.jpg',
+        'yapı kredi' => 'yapi-kredi-bankasi.jpg',
+        'yapı ve kredi bankası' => 'yapi-kredi-bankasi.jpg',
+        'kuveyt türk' => 'kuveyt-turk-bankasi.jpg',
+        'vakıfbank' => 'vakif-bank.jpg',
+        'halkbank' => 'halkbank.jpg',
+        'ziraat' => 'ziraat.jpg', // Varsa
+        'teb' => 'teb.jpg',
+        'ing' => 'ing-bank.jpg',
+        'qnb' => 'qnb-finansbank.jpg',
+        'aktif bank' => 'aktifbank.jpg',
+        'odea' => 'odeabank.jpg',
+    ];
+
+    $getLogo = function($bankName) use ($logoMap) {
+        $slug = \Illuminate\Support\Str::slug($bankName);
+        if (isset($logoMap[$slug])) return asset('logos/' . $logoMap[$slug]);
+        
+        // Kısmi eşleşme kontrolü (örn: "yapı" kelimesi geçiyorsa yapi-kredi ver)
+        foreach ($logoMap as $key => $file) {
+            if (str_contains($slug, $key)) return asset('logos/' . $file);
+        }
+
+        return asset('logos/' . $slug . '.jpg');
+    };
+@endphp
 
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
     <div class="container-fluid px-4">
@@ -232,9 +264,9 @@
                             <button class="accordion-button list-group-item list-group-item-action py-3 bank-item {{ (request('bank_id') == $bank->id || (isset($activeBank) && $activeBank->id == $bank->id) || request('account_id')) ? '' : 'collapsed' }}" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBank{{ $bank->id }}" style="box-shadow: none;">
                                 <div class="d-flex w-100 justify-content-between align-items-center pe-2">
                                     <div class="d-flex align-items-center">
-                                        <img src="{{ asset('logos/' . \Illuminate\Support\Str::slug($bank->bank_name) . '.jpg') }}" 
+                                        <img src="{{ $getLogo($bank->bank_name) }}" 
                                              onerror="this.src='https://via.placeholder.com/32?text=B'" 
-                                             class="bank-logo me-2" alt="logo">
+                                             class="bank-logo me-2" alt="logo" loading="lazy">
                                         <span style="font-size: 0.9rem;" class="{{ (request('bank_id') == $bank->id || (isset($activeBank) && $activeBank->id == $bank->id)) ? 'fw-bold text-primary' : '' }}">{{ $bank->bank_name }}</span>
                                     </div>
                                     <span class="badge bg-secondary rounded-pill">{{ $bank->bankAccounts->count() }}</span>
@@ -281,9 +313,9 @@
             @if(isset($activeBank) && $activeBank)
             <div class="card shadow-sm border-0 mb-4" style="border-radius: 12px; overflow: hidden;">
                 <div class="card-header bg-white py-3 d-flex align-items-center border-bottom-0">
-                    <img src="{{ asset('logos/' . \Illuminate\Support\Str::slug($activeBank->bank_name) . '.jpg') }}" 
+                    <img src="{{ $getLogo($activeBank->bank_name) }}" 
                          onerror="this.src='https://via.placeholder.com/40?text=B'" 
-                         style="height: 40px; object-fit: contain;" class="me-3">
+                         style="height: 40px; object-fit: contain;" class="me-3" loading="lazy">
                     <h4 class="mb-0 fw-bold text-dark">{{ $activeBank->bank_name }} Detayları</h4>
                 </div>
                 

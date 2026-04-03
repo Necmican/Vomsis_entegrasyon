@@ -251,85 +251,82 @@ class DashboardController extends Controller
         // ========================================================================
 
 
-        $summaryQuery = \App\Models\Transaction::join('bank_accounts', 'transactions.bank_account_id', '=', 'bank_accounts.id')
-            ->join('banks', 'bank_accounts.bank_id', '=', 'banks.id')
-            ->where('bank_accounts.include_in_totals', true)
-            ->where('bank_accounts.is_visible', true)
-            ->where('banks.is_visible', true);
+        // ========================================================================
+        // 8. DİNAMİK GELİR/GİDER HESABI (ÖZET KUTULARI) - OPTİMİZE EDİLDİ
+        // ========================================================================
+        
+        // Önce görünür ve totals'a dahil olan hesapları belirle (Küçük bir tablo, JOIN burada ucuz)
+        $validAccountQuery = \App\Models\BankAccount::where('include_in_totals', true)
+            ->where('is_visible', true)
+            ->whereHas('bank', fn($q) => $q->where('is_visible', true));
 
         if (!$isAdmin) {
-            $summaryQuery->whereIn('bank_accounts.bank_id', $izinliBankalar);
-            $summaryQuery->where(function ($q) use ($izinliEtiketler) {
-                $q->doesntHave('tags')
-                  ->orWhereHas('tags', function ($subQ) use ($izinliEtiketler) {
-                      $subQ->whereIn('tags.id', $izinliEtiketler);
-                  });
-            });
+            $validAccountQuery->whereIn('bank_id', $izinliBankalar);
         }
 
         if ($activeBank) {
-            $summaryQuery->where('bank_accounts.bank_id', $activeBank->id);
+            $validAccountQuery->where('bank_id', $activeBank->id);
         }
 
+        $validAccountIds = $validAccountQuery->pluck('id')->toArray();
+        $validAccountCurrencies = $validAccountQuery->pluck('currency', 'id')->toArray();
+
+        // Şimdi asıl ağır tablodan (Transactions) JOIN yapmadan toplamları alalım
+        $summaryQuery = \App\Models\Transaction::whereIn('bank_account_id', $validAccountIds);
+
+        if (!$isAdmin) {
+            $summaryQuery->where(function ($q) use ($izinliEtiketler) {
+                $q->doesntHave('tags')
+                  ->orWhereHas('tags', fn($subQ) => $subQ->whereIn('tags.id', $izinliEtiketler));
+            });
+        }
+
+        // Filtreleri asıl tabloya uygula
         if ($request->filled('search')) {
             $searchTerms = explode(' ', $request->search);
-            
             $summaryQuery->where(function($q) use ($searchTerms) {
                 foreach ($searchTerms as $term) {
                     $term = trim($term);
-                    if (!empty($term)) {
-                        $q->where(function($subQ) use ($term) {
-                            $subQ->where('transactions.description', 'like', '%' . $term . '%')
-                                 ->orWhere('banks.bank_name', 'like', '%' . $term . '%');
-                        });
-                    }
+                    if (!empty($term)) $q->where('description', 'like', '%' . $term . '%');
                 }
             });
         }
         
         if ($request->filled('currency')) {
-            $summaryQuery->where('bank_accounts.currency', $request->currency);
-        }
-        if ($request->filled('start_date')) {
-            $summaryQuery->whereDate('transactions.transaction_date', '>=', $request->start_date);
-        }
-        if ($request->filled('end_date')) {
-            $summaryQuery->whereDate('transactions.transaction_date', '<=', $request->end_date);
-        }
-        if ($request->filled('tag_name')) {
-            $tagName = $request->tag_name;
-            if (!$request->filled('tag_id')) {
-                $summaryQuery->join('pos_transaction_tag', 'transactions.id', '=', 'pos_transaction_tag.pos_transaction_id');
-            }
-            $summaryQuery->join('tags', 'pos_transaction_tag.tag_id', '=', 'tags.id')
-                         ->where('tags.name', 'like', '%' . $tagName . '%');
-        }
-        if ($request->filled('type_name')) {
-            if (strtolower($request->type_name) === 'gelir') {
-                $summaryQuery->where('transactions.amount', '>', 0);
-            } elseif (strtolower($request->type_name) === 'gider') {
-                $summaryQuery->where('transactions.amount', '<', 0);
-            }
-        }
-        if ($request->filled('type_code')) {
-            $summaryQuery->where('transactions.transaction_type_code', $request->type_code);
-        }
-        if ($request->filled('account_id')) {
-            $summaryQuery->where('transactions.bank_account_id', $request->account_id);
-        }
-        if ($request->filled('tag_id')) {
-            if (!$request->filled('tag_name')) {
-                 $summaryQuery->join('pos_transaction_tag', 'transactions.id', '=', 'pos_transaction_tag.pos_transaction_id');
-            }
-            $summaryQuery->where('pos_transaction_tag.tag_id', $request->tag_id);
+            // Sadece seçili kurdaki hesapları filtrele
+            $selectedCurrencyAccIds = array_keys(array_filter($validAccountCurrencies, fn($c) => $c == $request->currency));
+            $summaryQuery->whereIn('bank_account_id', $selectedCurrencyAccIds);
         }
 
-        $filteredSummaries = $summaryQuery
-            ->selectRaw('bank_accounts.currency, 
-                         SUM(CASE WHEN transactions.amount > 0 THEN transactions.amount ELSE 0 END) as total_income,
-                         SUM(CASE WHEN transactions.amount < 0 THEN transactions.amount ELSE 0 END) as total_expense')
-            ->groupBy('bank_accounts.currency')
+        if ($request->filled('start_date')) $summaryQuery->whereDate('transaction_date', '>=', $request->start_date);
+        if ($request->filled('end_date')) $summaryQuery->whereDate('transaction_date', '<=', $request->end_date);
+        if ($request->filled('type_code')) $summaryQuery->where('transaction_type_code', $request->type_code);
+        if ($request->filled('account_id')) $summaryQuery->where('bank_account_id', $request->account_id);
+        if ($request->filled('tag_id')) $summaryQuery->whereHas('tags', fn($q) => $q->where('tags.id', $request->tag_id));
+
+        $rawSummaries = $summaryQuery
+            ->selectRaw('bank_account_id, 
+                         SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as total_income,
+                         SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) as total_expense')
+            ->groupBy('bank_account_id')
             ->get();
+
+        // Döviz kuruna göre grupla (PHP tarafında yapmak DB'deki ağır JOIN'den kurtarır)
+        $totalsByCurrency = [];
+        foreach ($rawSummaries as $row) {
+            $curr = $validAccountCurrencies[$row->bank_account_id] ?? 'TRY';
+            if (!isset($totalsByCurrency[$curr])) {
+                $totalsByCurrency[$curr] = ['total_income' => 0, 'total_expense' => 0];
+            }
+            $totalsByCurrency[$curr]['total_income'] += $row->total_income;
+            $totalsByCurrency[$curr]['total_expense'] += $row->total_expense;
+        }
+
+        $filteredSummaries = collect($totalsByCurrency)->map(fn($val, $key) => (object)[
+            'currency' => $key,
+            'total_income' => $val['total_income'],
+            'total_expense' => $val['total_expense']
+        ]);
 
         // ========================================================================
         // 9. SABİT LİSTELER VE SAYFALAMA
