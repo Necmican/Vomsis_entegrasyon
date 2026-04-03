@@ -219,25 +219,58 @@
                 <div class="card-header bg-white fw-bold py-3 text-secondary">
                     🏦 Bankalar Menüsü
                 </div>
-                <div class="list-group list-group-flush">
-                    <a href="{{ url('/dashboard') }}" class="list-group-item list-group-item-action py-3 bank-item {{ !request('bank_id') ? 'active' : '' }}">
+                <div class="list-group list-group-flush accordion" id="bankMenuAccordion">
+                    <a href="{{ url('/dashboard') }}" class="list-group-item list-group-item-action py-3 bank-item {{ (!request('bank_id') && !request('account_id')) ? 'active' : '' }}">
                         <div class="d-flex align-items-center">
-                            <span class="fs-5 me-2">💼</span> Tüm Bankalar
+                            <span class="fs-5 me-2">💼</span> Tüm İşlemler
                         </div>
                     </a>
 
                     @foreach($banks as $bank)
-                    <a href="{{ url('/dashboard?bank_id=' . $bank->id) }}" class="list-group-item list-group-item-action py-3 bank-item {{ request('bank_id') == $bank->id ? 'active' : '' }}">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div class="d-flex align-items-center">
-                                <img src="{{ asset('logos/' . \Illuminate\Support\Str::slug($bank->bank_name) . '.jpg') }}" 
-                                     onerror="this.src='https://via.placeholder.com/32?text=B'" 
-                                     class="bank-logo me-2" alt="logo">
-                                <span style="font-size: 0.9rem;">{{ $bank->bank_name }}</span>
+                    <div class="accordion-item border-0">
+                        <h2 class="accordion-header" id="headingBank{{ $bank->id }}">
+                            <button class="accordion-button list-group-item list-group-item-action py-3 bank-item {{ (request('bank_id') == $bank->id || (isset($activeBank) && $activeBank->id == $bank->id) || request('account_id')) ? '' : 'collapsed' }}" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBank{{ $bank->id }}" style="box-shadow: none;">
+                                <div class="d-flex w-100 justify-content-between align-items-center pe-2">
+                                    <div class="d-flex align-items-center">
+                                        <img src="{{ asset('logos/' . \Illuminate\Support\Str::slug($bank->bank_name) . '.jpg') }}" 
+                                             onerror="this.src='https://via.placeholder.com/32?text=B'" 
+                                             class="bank-logo me-2" alt="logo">
+                                        <span style="font-size: 0.9rem;" class="{{ (request('bank_id') == $bank->id || (isset($activeBank) && $activeBank->id == $bank->id)) ? 'fw-bold text-primary' : '' }}">{{ $bank->bank_name }}</span>
+                                    </div>
+                                    <span class="badge bg-secondary rounded-pill">{{ $bank->bankAccounts->count() }}</span>
+                                </div>
+                            </button>
+                        </h2>
+                        
+                        @php
+                            // Bu bankaya ait bir hesap seçilmiş mi onu bulalım
+                            $isAccountSelectedInThisBank = false;
+                            if(request('account_id')) {
+                                $isAccountSelectedInThisBank = $bank->bankAccounts->contains('id', request('account_id'));
+                            }
+                            $isMenuOpen = request('bank_id') == $bank->id || $isAccountSelectedInThisBank || (isset($activeBank) && $activeBank->id == $bank->id);
+                        @endphp
+
+                        <div id="collapseBank{{ $bank->id }}" class="accordion-collapse collapse {{ $isMenuOpen ? 'show' : '' }}" data-bs-parent="#bankMenuAccordion">
+                            <div class="accordion-body p-0">
+                                <div class="list-group list-group-flush bg-light border-bottom">
+                                    <a href="{{ url('/dashboard?bank_id=' . $bank->id) }}" class="list-group-item list-group-item-action py-2 ps-4 {{ request('bank_id') == $bank->id && !request('account_id') ? 'active fw-bold' : 'text-primary border-0 bg-transparent' }}" style="font-size: 0.85rem;">
+                                        ➡️ Tüm Banka İşlemleri
+                                    </a>
+                                    @foreach($bank->bankAccounts as $acc)
+                                    @if($acc->is_visible)
+                                    <a href="{{ url('/dashboard?account_id=' . $acc->id) }}" class="list-group-item list-group-item-action py-2 ps-4 border-0 {{ request('account_id') == $acc->id ? 'active fw-bold' : 'bg-transparent' }}" style="font-size: 0.82rem;">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="text-truncate {{ request('account_id') == $acc->id ? 'text-white' : 'text-muted' }}" style="max-width: 110px;" title="{{ $acc->account_name }}">{{ Str::limit($acc->account_name, 15) }}</span>
+                                            <strong class="{{ request('account_id') == $acc->id ? 'text-white' : 'text-dark' }}">{{ number_format($acc->balance, 2, ',', '.') }} <small>{{ $acc->currency }}</small></strong>
+                                        </div>
+                                    </a>
+                                    @endif
+                                    @endforeach
+                                </div>
                             </div>
-                            <span class="badge bg-secondary rounded-pill">{{ $bank->bankAccounts->count() }}</span>
                         </div>
-                    </a>
+                    </div>
                     @endforeach
                 </div>
             </div>
@@ -777,7 +810,7 @@
                     <div class="text-muted small text-center py-3">Sistemde yetkiniz olan hiçbir etiket bulunmuyor.</div>
                 @endif
             </div>
-            <small class="text-muted d-block mt-2" style="font-size: 0.75rem;">Seçtiğiniz işlemlerden bazılarında bu etiketler zaten varsa, sistem akıllıca davranıp çift kayıt oluşturmaz.</small>
+            <small class="text-muted d-block mt-2" style="font-size: 0.75rem;">.</small>
         </div>
         <div class="modal-footer border-0 bg-light pt-0">
           <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">İptal</button>

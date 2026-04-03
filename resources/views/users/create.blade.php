@@ -45,6 +45,22 @@
                 </div>
             </div>
 
+            <h3 class="text-lg font-bold text-gray-800 mb-3 border-b pb-2">Sistem Veri Tipi (Gerçek/Demo)</h3>
+            
+            <div class="mb-6 bg-blue-50 p-4 rounded border border-blue-200">
+                <p class="text-sm text-gray-600 mb-3 font-medium">Bu kullanıcı sisteme girdiğinde hangi verileri kullanacak?</p>
+                <div class="flex space-x-6">
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" name="is_real_data" value="1" class="form-radio h-5 w-5 text-blue-600 focus:ring-blue-500" required>
+                        <span class="text-gray-800 font-bold">1 Yıllık Gerçek Veriler (1)</span>
+                    </label>
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="radio" name="is_real_data" value="0" class="form-radio h-5 w-5 text-gray-600 focus:ring-gray-500" required>
+                        <span class="text-gray-800 font-bold">Eski Demo Veriler (0)</span>
+                    </label>
+                </div>
+            </div>
+
             <h3 class="text-lg font-bold text-gray-800 mb-3 border-b pb-2">Özel Yetkiler</h3>
 
             <div class="mb-4 bg-gray-50 p-4 rounded border">

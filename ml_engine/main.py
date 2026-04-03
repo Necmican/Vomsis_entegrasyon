@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+import fastapi
 from pydantic import BaseModel
 import pandas as pd
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
@@ -8,7 +8,7 @@ from typing import Dict
 # İstatistiksel uyarıları gizle
 warnings.filterwarnings("ignore")
 
-app = FastAPI(title="Vomsis ML Engine")
+app = fastapi.FastAPI(title="Vomsis ML Engine")
 
 # Laravel'den gelecek JSON verisinin şablonu
 class ForecastRequest(BaseModel):
@@ -67,7 +67,7 @@ def generate_forecast_batch(request: BatchForecastRequest):
                 response[currency] = []
         return {"status": "success", "forecasts": response}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/forecast")
 def generate_forecast(request: ForecastRequest):
@@ -75,4 +75,4 @@ def generate_forecast(request: ForecastRequest):
         results = predict_series(request.dates, request.balances, request.days_to_predict)
         return {"status": "success", "forecast": results}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise fastapi.HTTPException(status_code=500, detail=str(e))

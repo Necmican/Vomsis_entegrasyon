@@ -58,6 +58,7 @@ class UserController extends Controller
             'can_create_tags'       => $etiketUretmeYetkisi, // TİK İŞARETLENDİYSE TRUE (1) YAZACAK
             'allowed_banks'         => empty($yetkiliBankalar) ? null : array_values($yetkiliBankalar),
             'allowed_tags'          => empty($izinVerilenEtiketler) ? null : array_values($izinVerilenEtiketler), // Seçilen etiketleri JSON (Array) olarak kaydet
+            'is_real_data'          => $request->input('is_real_data', 0), // Gerçek mi Demo mu verisi
         ]);
 
         return redirect()->route('dashboard')->with('mesaj', 'Yeni personel başarıyla eklendi ve yetkilendirildi.');

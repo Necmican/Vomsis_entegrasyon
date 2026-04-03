@@ -13,6 +13,27 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class DashboardController extends Controller
 {
+    /**
+     * Hesap ID listesi verildiğinde, her hesabın en son işlemdeki bakiyesini döndürür.
+     * N+1 sorgu problemini ortadan kaldıran tek sorguluk optimizasyon.
+     */
+    private function getLatestBalances(array $accountIds): array
+    {
+        if (empty($accountIds)) return [];
+
+        // Alt sorgu: Her hesap için en büyük id'yi bul (en son işlem)
+        $latestIds = \App\Models\Transaction::selectRaw('MAX(id) as max_id')
+            ->whereIn('bank_account_id', $accountIds)
+            ->groupBy('bank_account_id')
+            ->pluck('max_id');
+
+        if ($latestIds->isEmpty()) return [];
+
+        return \App\Models\Transaction::whereIn('id', $latestIds)
+            ->pluck('balance', 'bank_account_id')
+            ->toArray();
+    }
+
     public function index(Request $request)
     {
         // ========================================================================
@@ -55,15 +76,14 @@ class DashboardController extends Controller
 
         $banks = $banksQuery->get();
         
-        // Sol menüde (sidebar) gösterilen hesapların bakiyelerini de güncel işlem bakiyesiyle eziyoruz
+        // Sol menüdeki tüm hesap ID'lerini topla ve tek sorguda bakiyeleri çek
+        $allSidebarAccountIds = $banks->flatMap(fn($b) => $b->bankAccounts->pluck('id'))->toArray();
+        $latestBalances = $this->getLatestBalances($allSidebarAccountIds);
+        
         foreach ($banks as $bank) {
             foreach ($bank->bankAccounts as $acc) {
-                $latestTxn = \App\Models\Transaction::where('bank_account_id', $acc->id)
-                    ->orderBy('transaction_date', 'desc')
-                    ->orderBy('id', 'desc')
-                    ->first();
-                if ($latestTxn) {
-                    $acc->balance = $latestTxn->balance;
+                if (isset($latestBalances[$acc->id])) {
+                    $acc->balance = $latestBalances[$acc->id];
                 }
             }
         }
@@ -97,13 +117,12 @@ class DashboardController extends Controller
         }
         
         $accountsForTotals = $totalsQuery->get();
+        $totalsAccountIds = $accountsForTotals->pluck('id')->toArray();
+        $totalsBalances = $this->getLatestBalances($totalsAccountIds);
+        
         $totalsArray = [];
         foreach ($accountsForTotals as $acc) {
-            $latestTxn = \App\Models\Transaction::where('bank_account_id', $acc->id)
-                ->orderBy('transaction_date', 'desc')
-                ->orderBy('id', 'desc')
-                ->first();
-            $gercekBakiye = $latestTxn ? $latestTxn->balance : $acc->balance;
+            $gercekBakiye = $totalsBalances[$acc->id] ?? $acc->balance;
             if (!isset($totalsArray[$acc->currency])) {
                 $totalsArray[$acc->currency] = 0;
             }
@@ -120,14 +139,12 @@ class DashboardController extends Controller
         if ($activeBank) {
             $activeBankAccounts = $activeBank->bankAccounts->where('is_visible', true);
             
-            // Hesap bakiyelerini gelen son işlem verisiyle dinamik güncelliyoruz
+            // Aktif banka hesap bakiyelerini toplu güncelle
+            $activeAccIds = $activeBankAccounts->pluck('id')->toArray();
+            $activeBalances = $this->getLatestBalances($activeAccIds);
             foreach ($activeBankAccounts as $acc) {
-                $latestTxn = \App\Models\Transaction::where('bank_account_id', $acc->id)
-                    ->orderBy('transaction_date', 'desc')
-                    ->orderBy('id', 'desc')
-                    ->first();
-                if ($latestTxn) {
-                    $acc->balance = $latestTxn->balance; // View'da da güncel gerçek bakiye görünsün
+                if (isset($activeBalances[$acc->id])) {
+                    $acc->balance = $activeBalances[$acc->id];
                 }
             }
 

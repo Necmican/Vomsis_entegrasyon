@@ -26,6 +26,7 @@ class User extends Authenticatable
         'can_create_tags',  // YENİ: Etiket üretebilme yetkisi
         'allowed_banks', 
         'allowed_tags',     // YENİ: Görebileceği etiketler
+        'is_real_data',     // YENİ: Gerçek/Demo Veri kullanımı
     ];
 
     /**
@@ -53,6 +54,7 @@ class User extends Authenticatable
             'can_create_tags'       => 'boolean',
             'allowed_banks'         => 'array',
             'allowed_tags'          => 'array', 
+            'is_real_data'          => 'boolean',
         ];
     }
 }
