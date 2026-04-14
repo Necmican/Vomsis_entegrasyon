@@ -62,12 +62,41 @@ Route::middleware('auth')->group(function () {
     Route::post('/etiket/olustur', [TagController::class, 'store'])->name('tags.store');
     Route::post('/islem/{transactionId}/etiket-ekle', [TagController::class, 'attachTag']);
     Route::post('/islem/{transactionId}/etiket-cikar/{tagId}', [TagController::class, 'detachTag']);
+    Route::post('/islem/toplu-etiket-ekle', [TagController::class, 'bulkAttachTags'])->name('tags.bulk.attach');
+    Route::post('/islem/toplu-etiket-kaldir', [TagController::class, 'bulkDetachTags'])->name('tags.bulk.detach');
+
+    // ========================================================================
+    // 4. OTO-ETİKET (AUTO-TAG) YÖNETİMİ
+    // ========================================================================
+    Route::get('/oto-etiket', [TagController::class, 'autoTagIndex'])->name('auto-tag.index');
+    Route::post('/oto-etiket/kural-kaydet', [TagController::class, 'saveAutoTagRule'])->name('auto-tag.save');
+    Route::post('/oto-etiket/kume-etiketle', [TagController::class, 'applyCluster'])->name('auto-tag.apply-cluster');
+    Route::post('/oto-etiket/geri-donuk-uygula', [TagController::class, 'applyAutoTagRules'])->name('auto-tag.apply');
+    Route::delete('/oto-etiket/kural-sil/{id}', [TagController::class, 'deleteAutoTagRule'])->name('auto-tag.delete');
+
+    // Kelime Hariç Tutma
+    Route::post('/oto-etiket/kelime-haric-tut', [TagController::class, 'addExclusion'])->name('auto-tag.exclusion.add');
+    Route::delete('/oto-etiket/kelime-haric-tut/{id}', [TagController::class, 'deleteExclusion'])->name('auto-tag.exclusion.delete');
+    // AJAX re-clustering JSON endpoint
+    Route::get('/oto-etiket/clusters-json', [TagController::class, 'clustersJson'])->name('auto-tag.clusters-json');
+
+    // ── Hızlı Etiketleme ──────────────────────────────────────────────────────
+    // 1. Anahtar kelimedeki eşleşen işlemleri önizle (JSON)
+    Route::get('/oto-etiket/ara', [TagController::class, 'keywordPreview'])->name('auto-tag.keyword-preview');
+    // 2. Etiket oluştur (yoksa) + eşleşen işlemleri etiketle
+    Route::post('/oto-etiket/hizli-etiketle', [TagController::class, 'quickTagByKeyword'])->name('auto-tag.quick-tag');
+    // 3. Eşleşen işlemleri soft-delete ile kaldır
+    Route::delete('/oto-etiket/islemleri-sil', [TagController::class, 'deleteMatchingTransactions'])->name('auto-tag.delete-matching');
 
     // ========================================================================
     // 4. DIŞA AKTARIM (EXCEL & PDF TABLO)
     // ========================================================================
     Route::get('/export/pdf', [ExportController::class, 'exportPdf'])->name('export.pdf');
     Route::post('/export/excel', [ExportController::class, 'exportExcel'])->name('export.excel');
+    
+    // Arka Plan Kuyruk (Queue) Takip ve İndirme Rotaları
+    Route::get('/export/status', [ExportController::class, 'checkStatus'])->name('export.status');
+    Route::get('/export/download/{id}', [ExportController::class, 'downloadFile'])->name('export.download');
 
     // ========================================================================
     // 5. SANAL POS İŞLEMLERİ
@@ -81,39 +110,47 @@ Route::middleware('auth')->group(function () {
     Route::get('/sanal-pos/senkronize-et', [PaymentController::class, 'syncTransactions'])->name('payment.sync');  
     
     // ========================================================================
-    // 6. GELİŞTİRİCİ TEST ROTALARI
+    // 6. GELİŞTİRİCİ TEST ROTALARI (Sadece Test Ortamı ve Yöneticiler)
     // ========================================================================
-    Route::get('/test-token', function (VomsisService $vomsisService) {
-        try {
-            return "Tebrikler! Token: " . $vomsisService->getToken();
-        } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
-    });
+    Route::prefix('dev')->group(function () {
+        Route::get('/test-token', function (VomsisService $vomsisService) {
+            try { return "Tebrikler! Token: " . $vomsisService->getToken(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
+        });
+        Route::get('/test-banks', function (VomsisService $vomsisService) {
+            try { return $vomsisService->syncBanks(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
+        });
+        Route::get('/test-accounts', function (VomsisService $vomsisService) {
+            try { return $vomsisService->syncAccounts(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
+        });
+        Route::get('/test-transactions', function (VomsisService $vomsisService) {
+            try { return $vomsisService->syncTransactions(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
+        });
+        Route::get('/test-types', function (VomsisService $vomsisService) {
+            try { return $vomsisService->syncTransactionTypes(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
+        });
+        Route::get('/test-poses', function (VomsisService $vomsisService) {
+            try { return $vomsisService->syncVirtualPoses(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
+        });
+        Route::get('/hata-test', function (VomsisService $vomsisService) {
+            try { $vomsisService->syncTransactions(); return "İşlem Başarılı!"; } catch (\Exception $e) { return "HATA: " . $e->getMessage(); }
+        });
+        
+        // ML ve Geçmiş Veri Testleri
+        Route::get('/yapay-zeka-test', function () {
+            $dates = ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04'];
+            $balances = [10000, 10500, 10200, 11000];
+            $response = Http::post('http://python_ml:8000/api/forecast', [
+                'dates' => $dates, 'balances' => $balances, 'days_to_predict' => 2
+            ]);
+            if ($response->successful()) {
+                return response()->json(['mesaj' => 'Başarılı.', 'tahminler' => $response->json('forecast')]);
+            }
+            return response()->json(['hata' => 'Bağlantı kurulamadı.'], 500);
+        });
 
-    Route::get('/test-banks', function (VomsisService $vomsisService) {
-        try { return $vomsisService->syncBanks(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
-    });
-
-    Route::get('/test-accounts', function (VomsisService $vomsisService) {
-        try { return $vomsisService->syncAccounts(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
-    });
-
-    Route::get('/test-transactions', function (VomsisService $vomsisService) {
-        try { return $vomsisService->syncTransactions(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
-    });
-
-    Route::get('/test-types', function (VomsisService $vomsisService) {
-        try { return $vomsisService->syncTransactionTypes(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
-    });
-
-    Route::get('/hata-test', function (VomsisService $vomsisService) {
-        try {
-            $vomsisService->syncTransactions();
-            return "İşlem Başarılı!";
-        } catch (\Exception $e) { return "HATA: " . $e->getMessage(); }
-    });
-
-    Route::get('/test-poses', function (VomsisService $vomsisService) {
-        try { return $vomsisService->syncVirtualPoses(); } catch (\Exception $e) { return "Hata: " . $e->getMessage(); }
+        Route::get('/gecmis-verileri-cek', function (\App\Services\VomsisService $vomsisService) {
+            return "Sistem performansını korumak için geçmiş veri çekme otomasyonu panel üzerinden yönetilmelidir.";
+        });
     });
     
     // ========================================================================
@@ -134,92 +171,108 @@ Route::middleware('auth')->group(function () {
     // ========================================================================
     Route::post('/ai/ask', [App\Http\Controllers\AiController::class, 'ask'])->name('ai.ask');
 
-    //
-    //ANALİZ ROTALARI
-    //
-
-
-
-
-    Route::get('/analizler', [AnalyticsController::class, 'index'])->name('analytics.index');
-
-    //-----------------------------------------------------------------------
-    //      test roları
-    //-----------------------------------------------------------------------
-
-    Route::get('/yapay-zeka-test', function () {
-    // 1. Örnek Geçmiş Veriler (Bunu daha sonra veritabanından çekeceğiz)
-    $dates = ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-01-09', '2026-01-10'];
-    $balances = [10000, 10500, 10200, 11000, 10800, 11500, 11200, 12000, 11800, 12500];
-
-    // 2. Python Servisine İstek At
-    // Docker kullandığımız için adres localhost değil, servis adı olan "python_ml" olur!
-    $response = Http::post('http://python_ml:8000/api/forecast', [
-        'dates' => $dates,
-        'balances' => $balances,
-        'days_to_predict' => 7 // Gelecek 7 günü tahmin et
-    ]);
-
-    // 3. Sonucu Ekrana Bas
-    if ($response->successful()) {
-        return response()->json([
-            'mesaj' => 'Mükemmel! Laravel ve Python başarıyla konuştu.',
-            'tahminler' => $response->json('forecast')
-        ]);
-    }
-
-    return response()->json([
-        'hata' => 'Bağlantı kurulamadı.', 
-        'detay' => $response->body()
-    ], 500);
-});
-
-
-
-Route::get('/gecmis-verileri-cek', function (\App\Services\VomsisService $vomsisService) {
-    // Başlangıç ve Bitiş tarihlerini belirle (Örn: 4 haftalık bir periyot)
-    $startDate = Carbon::parse('2025-12-09'); 
-    $endDate   = Carbon::parse('2026-01-06'); // Yaklaşık 4 hafta sonrası
-
-    $currentStart = $startDate->copy();
-    $log = [];
-
-    while ($currentStart->lessThan($endDate)) {
-        // 7 günlük pencere oluştur
-        $currentEnd = $currentStart->copy()->addDays(6); 
+    // ========================================================================
+    // DEBUG: Dashboard vs Analytics karşılaştırması (GEÇİCİ - Sorun çözülünce SİL)
+    // ========================================================================
+    Route::get('/dev/debug-balances', function () {
+        $user = auth()->user();
         
-        // Eğer 7 gün eklediğimizde bitiş tarihini geçiyorsa, bitiş tarihine sabitle
-        if ($currentEnd->greaterThan($endDate)) {
-            $currentEnd = $endDate;
+        // Dashboard'un kullandığı hesaplar
+        $accs = \App\Models\BankAccount::where('include_in_totals', true)
+            ->where('is_visible', true)
+            ->whereHas('bank', fn($q) => $q->where('is_visible', true))
+            ->get();
+        $accountIds = $accs->pluck('id')->toArray();
+
+        // --- DASHBOARD HESABI (kronolojik: transaction_date DESC) ---
+        $dashBalances = [];
+        foreach ($accountIds as $accId) {
+            $bal = \App\Models\Transaction::where('bank_account_id', $accId)
+                ->orderBy('transaction_date', 'desc')
+                ->orderBy('id', 'desc')
+                ->value('balance');
+            if ($bal !== null) {
+                $dashBalances[$accId] = $bal;
+            }
         }
 
-        $baslangicStr = $currentStart->format('Y-m-d');
-        $bitisStr     = $currentEnd->format('Y-m-d');
+        // --- ANALİTİK HESABI (kronolojik: transaction_date DESC, aynı yöntem) ---
+        $maxDbDateStr = \App\Models\Transaction::whereIn('bank_account_id', $accountIds)->max('transaction_date');
+        $endDateStr = $maxDbDateStr ? Carbon::parse($maxDbDateStr)->format('Y-m-d') : Carbon::now()->format('Y-m-d');
 
-        try {
-            // DİKKAT: VomsisService içindeki metodunun tarih parametresi aldığına emin ol.
-            // Örnek: $vomsisService->syncTransactions($baslangicStr, $bitisStr);
+        $rows = [];
+        $dashTotalTL = 0; $anaTotalTL = 0;
+        $dashTotalUSD = 0; $anaTotalUSD = 0;
+        $dashTotalEUR = 0; $anaTotalEUR = 0;
+
+        foreach ($accs as $acc) {
+            $cur = $acc->currency;
+            // Dashboard bakiyesi
+            $dashBal = floatval($dashBalances[$acc->id] ?? $acc->balance);
+
+            // Analytics bakiyesi: Tüm işlemleri kronolojik sırayla al, son bakiyeyi bul
+            $lastTxn = \App\Models\Transaction::where('bank_account_id', $acc->id)
+                ->where('transaction_date', '<=', $endDateStr . ' 23:59:59')
+                ->orderBy('transaction_date', 'desc')
+                ->orderBy('id', 'desc')
+                ->first(['balance', 'transaction_date']);
             
-            // Eğer senin metodun tarih almıyorsa, VomsisService içine gidip o fonksiyona 
-            // $startDate ve $endDate parametreleri eklemen gerekecek.
-            
-            $log[] = "{$baslangicStr} ile {$bitisStr} arası başarıyla çekildi.";
-        } catch (\Exception $e) {
-            $log[] = "HATA ({$baslangicStr} - {$bitisStr}): " . $e->getMessage();
+            if ($lastTxn) {
+                $anaBal = floatval($lastTxn->balance);
+                $lastInRange = $lastTxn->transaction_date;
+            } else {
+                $anaBal = floatval($acc->balance ?? 0);
+                $lastInRange = 'N/A';
+            }
+
+            $diff = round($dashBal - $anaBal, 2);
+            $txnCount = \App\Models\Transaction::where('bank_account_id', $acc->id)->count();
+
+            $rows[] = [
+                'acc_id' => $acc->id,
+                'currency' => $cur,
+                'acc_name' => $acc->account_name ?? $acc->iban ?? 'Hesap #'.$acc->id,
+                'dash_bal' => number_format($dashBal, 2),
+                'ana_bal' => number_format($anaBal, 2),
+                'diff' => number_format($diff, 2),
+                'txn_count' => $txnCount,
+                'chrono_last_date' => $lastInRange,
+                'PROBLEM' => abs($diff) > 0.01 ? '❌ FARKLI' : '✅',
+            ];
+
+            if ($cur === 'TL' || $cur === 'TRY') { $dashTotalTL += $dashBal; $anaTotalTL += $anaBal; }
+            if ($cur === 'USD') { $dashTotalUSD += $dashBal; $anaTotalUSD += $anaBal; }
+            if ($cur === 'EUR') { $dashTotalEUR += $dashBal; $anaTotalEUR += $anaBal; }
         }
 
-        // Vomsis API'sini boğmamak için her istekten sonra 2 saniye bekle (Çok Önemli!)
-        sleep(2); 
+        return response()->json([
+            'debug_info' => [
+                'analytics_end' => $endDateStr,
+                'max_db_date' => $maxDbDateStr,
+                'total_accounts' => count($accountIds),
+                'is_real_context' => $user->is_real_data,
+            ],
+            'totals' => [
+                'TL' => ['dashboard' => number_format($dashTotalTL, 2), 'analytics' => number_format($anaTotalTL, 2), 'diff' => number_format($dashTotalTL - $anaTotalTL, 2)],
+                'USD' => ['dashboard' => number_format($dashTotalUSD, 2), 'analytics' => number_format($anaTotalUSD, 2), 'diff' => number_format($dashTotalUSD - $anaTotalUSD, 2)],
+                'EUR' => ['dashboard' => number_format($dashTotalEUR, 2), 'analytics' => number_format($anaTotalEUR, 2), 'diff' => number_format($dashTotalEUR - $anaTotalEUR, 2)],
+            ],
+            'accounts' => $rows,
+        ], 200, [], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+    });
 
-        // Bir sonraki döngü için başlangıç tarihini, mevcut bitişin 1 gün sonrasına al
-        $currentStart = $currentEnd->copy()->addDay();
-    }
+    // ========================================================================
+    // 8. ANALİZ ROTALARI
+    // ========================================================================
+    Route::get('/analizler', [AnalyticsController::class, 'index'])->name('analytics.index');
+    Route::get('/analizler/pie-data', [AnalyticsController::class, 'pieData'])->name('analytics.pie-data');
+    Route::get('/analizler/line-data', [AnalyticsController::class, 'lineData'])->name('analytics.line-data');
+    Route::get('/analizler/line-data', [AnalyticsController::class, 'lineData'])->name('analytics.line-data');
 
-    return $log; // İşlem bitince ekrana raporu bas
 });
- });
 
 // ========================================================================
 // PUBLIC (3D Secure CALLBACK) - Banka/ACS cross-site POST yapar, auth yok
 // ========================================================================
 Route::post('/odeme/sonuc', [PaymentController::class, 'callback'])->name('payment.callback');
+

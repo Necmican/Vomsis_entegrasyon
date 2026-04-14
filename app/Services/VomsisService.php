@@ -347,7 +347,10 @@ class VomsisService
                         );
                     }
 
-                    $islemTarihi = $trans['system_date'] ?? $currentStart->format('Y-m-d H:i:s');
+                    $islemTarihi = $trans['date'] 
+                        ?? $trans['transaction_date'] 
+                        ?? $trans['system_date'] 
+                        ?? $currentStart->format('Y-m-d H:i:s');
 
                     Transaction::updateOrCreate(
                         ['vomsis_transaction_id' => $trans['id']],
@@ -374,5 +377,39 @@ class VomsisService
         }
 
         return $kayitSayisi . " adet işlem başarıyla çekildi!";
+    }
+
+    /**
+     * İşlem Tiplerini Vomsis'ten (veya mevcut işlemlerden) senkronize et.
+     */
+    public function syncTransactionTypes()
+    {
+        // Bu aslında syncTransactions içinde yapılıyor ama route için ayrı metod ekliyoruz
+        return $this->syncTransactions(); 
+    }
+
+    /**
+     * Sanal POS (Virtual POS) cihazlarını senkronize et.
+     */
+    public function syncVirtualPoses()
+    {
+        $token = $this->getPosToken();
+        $response = \Illuminate\Support\Facades\Http::withToken($token)->get("{$this->posApiUrl}/pos-list");
+
+        if ($response->successful()) {
+            $data = $response->json();
+            $posList = $data['data'] ?? [];
+            foreach ($posList as $pos) {
+                \App\Models\VirtualPos::updateOrCreate(
+                    ['name' => $pos['pos_name'] ?? 'Bilinmeyen POS'],
+                    [
+                        'merchant_id' => $pos['merchant_id'] ?? '0',
+                        'is_active'   => true,
+                    ]
+                );
+            }
+            return count($posList) . " adet Sanal POS cihazı güncellendi.";
+        }
+        return "Sanal POS listesi çekilemedi.";
     }
 }

@@ -15,6 +15,6 @@ class Tag extends Model
     // Ayrıca pivot tablo ve kolon isimleri ters sırayla Laravel'e tanıtıldı.
     public function transactions()
     {
-        return $this->belongsToMany(Transaction::class, 'pos_transaction_tag', 'tag_id', 'pos_transaction_id');
+        return $this->belongsToMany(Transaction::class, 'transaction_tag', 'tag_id', 'transaction_id');
     }
 }

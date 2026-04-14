@@ -8,16 +8,22 @@ use Illuminate\Database\Eloquent\Builder;
 class Transaction extends Model
 {
     protected $fillable = [
-    'vomsis_transaction_id',
-    'bank_account_id',
-    'description',
-    'amount',
-    'type',
-    'balance',
-    'transaction_date',
-    'transaction_type_code',
-    'is_real'
-];
+        'vomsis_transaction_id',
+        'bank_account_id',
+        'description',
+        'amount',
+        'type',
+        'balance',
+        'transaction_date',
+        'transaction_type_code',
+        'is_real'
+    ];
+
+    protected $casts = [
+        'transaction_date' => 'datetime',
+        'balance' => 'decimal:2',
+        'amount' => 'decimal:2',
+    ];
 
     /**
      * The "booted" method of the model.
@@ -57,6 +63,6 @@ class Transaction extends Model
     public function tags()
     {
         // Pivot tablonun adını ve sütunlarını Laravel'e açıkça belirtiyoruz
-        return $this->belongsToMany(Tag::class, 'pos_transaction_tag', 'pos_transaction_id', 'tag_id');
+        return $this->belongsToMany(Tag::class, 'transaction_tag', 'transaction_id', 'tag_id');
     }
 }

@@ -1,0 +1,252 @@
+import fastapi
+import re
+import warnings
+from typing import Dict, List
+
+import pandas as pd
+from pydantic import BaseModel
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+
+warnings.filterwarnings("ignore")
+
+app = fastapi.FastAPI(title="Vomsis ML Engine")
+
+# =============================================================================
+# BÖLÜM 1: FİNANSAL TAHMİN (Holt-Winters)
+# =============================================================================
+
+class ForecastRequest(BaseModel):
+    dates: list[str]
+    incomes: list[float]
+    expenses: list[float]
+    periods_to_predict: int = 5
+    period_type: str = "W"  # 'W' = Haftalık, 'D' = Günlük
+
+class BatchForecastRequest(BaseModel):
+    accounts: Dict[str, ForecastRequest]
+
+
+def do_prediction(df_series: pd.Series, periods: int) -> list[float]:
+    """Tek bir seri için Holt-Winters üstel düzeltme tahmini."""
+    if len(df_series) < 3:
+        last_val = df_series.iloc[-1] if not df_series.empty else 0.0
+        return [round(last_val, 2)] * periods
+    try:
+        model = ExponentialSmoothing(
+            df_series, trend='add', damped_trend=True, initialization_method="estimated"
+        )
+        fitted = model.fit()
+        forecast = fitted.forecast(steps=periods).apply(lambda x: max(0.0, x))
+        return [round(x, 2) for x in forecast]
+    except Exception:
+        last_val = max(0.0, df_series.iloc[-1])
+        return [round(last_val, 2)] * periods
+
+
+def predict_series(dates, incomes, expenses, periods, period_type="W"):
+    if not dates:
+        return []
+
+    last_date = pd.to_datetime(dates[-1])
+    if period_type == "D":
+        future_dates = [last_date + pd.Timedelta(days=i) for i in range(1, periods + 1)]
+    else:
+        future_dates = [last_date + pd.Timedelta(weeks=i) for i in range(1, periods + 1)]
+
+    future_dates_str = [d.strftime("%Y-%m-%d") for d in future_dates]
+
+    df = pd.DataFrame({'date': pd.to_datetime(dates), 'income': incomes, 'expense': expenses})
+    df.set_index('date', inplace=True)
+
+    pred_incomes  = do_prediction(df['income'],  periods)
+    pred_expenses = do_prediction(df['expense'], periods)
+
+    return [
+        {"date": future_dates_str[i], "predicted_income": pred_incomes[i], "predicted_expense": pred_expenses[i]}
+        for i in range(periods)
+    ]
+
+
+@app.post("/api/forecast_batch")
+def generate_forecast_batch(request: BatchForecastRequest):
+    try:
+        response = {}
+        for currency, req in request.accounts.items():
+            if len(req.incomes) > 0:
+                response[currency] = predict_series(
+                    req.dates, req.incomes, req.expenses,
+                    req.periods_to_predict, getattr(req, 'period_type', 'W')
+                )
+            else:
+                response[currency] = []
+        return {"status": "success", "forecasts": response}
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/forecast")
+def generate_forecast(request: ForecastRequest):
+    try:
+        results = predict_series(
+            request.dates, request.incomes, request.expenses,
+            request.periods_to_predict, getattr(request, 'period_type', 'W')
+        )
+        return {"status": "success", "forecast": results}
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# BÖLÜM 2: NLP KÜMELEME — TF-IDF + KMeans (Gerçek Makine Öğrenmesi)
+# =============================================================================
+
+# Türkçe finans metinleri için özel stop-word listesi
+TURKISH_FINANCE_STOP_WORDS = {
+    "ve", "ile", "bir", "bu", "da", "de", "den", "icin", "olan", "olan",
+    "the", "and", "for", "of",
+    # İşlem tipleri
+    "islem", "odeme", "odemesi", "tahsilat", "kesinti",
+    "havale", "eft", "trf", "vrm", "transfer", "virman",
+    # Firma ekleri
+    "ltd", "sti", "sirketi", "limited", "sirket", "anonim", "koll", "ort",
+    # Banka terimleri
+    "banka", "hesap", "iban", "swift", "pos", "atm",
+    # Açıklama dolgu kelimeleri
+    "tarih", "not", "ref", "kod", "aciklama", "bilgi", "no",
+    # Vergi/finans genel kelimeleri
+    "vergi", "vergisi", "kdv", "fatura", "faturasi", "makbuz",
+    "bedeli", "ucreti", "masrafi", "komisyon",
+}
+
+
+def normalize_turkish(text: str) -> str:
+    """Türkçe karakterleri ASCII'ye dönüştür ve küçük harfe çevir."""
+    tr_map = str.maketrans(
+        "şıöüğçŞİÖÜĞÇ",
+        "siougcSIOUGC"
+    )
+    return text.translate(tr_map).lower()
+
+
+class ClusterRequest(BaseModel):
+    descriptions: List[str]
+    transaction_ids: List[int] = []   # Opsiyonel: hangi ID'ler olduğunu da bil
+    n_clusters: int = 20              # Kaç kümeye ayıralım
+    exclusions: List[str] = []        # HARİÇ tutulacak kelimeler (kullanıcı tanımlı)
+
+
+def clean_description(text: str, extra_stops: List[str] = []) -> str:
+    """Açıklamayı normalleştir, stop-words temizle."""
+    normalized = normalize_turkish(text)
+    cleaned = re.sub(r'[^a-z0-9 ]', ' ', normalized)
+    
+    all_stops = TURKISH_FINANCE_STOP_WORDS.copy()
+    for s in extra_stops:
+        all_stops.add(s.lower())
+
+    words = [w for w in cleaned.split() if w not in all_stops and len(w) > 2]
+    return " ".join(words)
+
+
+@app.post("/api/cluster_transactions")
+def cluster_transactions(request: ClusterRequest):
+    """
+    TF-IDF + KMeans ile işlem açıklamalarını kümele.
+    Her küme için: temsil cümlesi, anahtar kelimeler, kaç işlem içerdiği,
+    örnek açıklamalar ve ilgili transaction ID'ler döner.
+    """
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.cluster import KMeans
+        from sklearn.metrics.pairwise import cosine_similarity
+        import numpy as np
+
+        descriptions   = request.descriptions
+        txn_ids        = request.transaction_ids if request.transaction_ids else list(range(len(descriptions)))
+        n_clusters_req = request.n_clusters
+
+        # Çok az açıklama varsa kümeleme yapamazsın
+        if len(descriptions) < 5:
+            return {"status": "success", "clusters": []}
+
+        # Temizlenmiş açıklamalar
+        cleaned_descs = [clean_description(d, request.exclusions) for d in descriptions]
+
+        # Boş açıklamaları ele al
+        valid_mask = [i for i, d in enumerate(cleaned_descs) if d.strip()]
+        if len(valid_mask) < 5:
+            return {"status": "success", "clusters": []}
+
+        valid_cleaned  = [cleaned_descs[i] for i in valid_mask]
+        valid_original = [descriptions[i]  for i in valid_mask]
+        valid_ids      = [txn_ids[i]        for i in valid_mask]
+
+        # Gerçek küme sayısı: veri sayısını geçemez
+        n_clusters = min(n_clusters_req, len(valid_cleaned) // 3, 30)
+        n_clusters = max(n_clusters, 2)
+
+        # ─── TF-IDF Vektorizasyonu ───────────────────────────────────────────
+        # ngram_range=(1,2) → hem tekli hem de ikili kelimeyi (bigram) yakalar
+        vectorizer = TfidfVectorizer(
+            ngram_range=(1, 2),
+            min_df=2,               # En az 2 belgede geçmeli
+            max_df=0.85,            # Belgelerin %85'inden fazlasında geçenler genel → sil
+            sublinear_tf=True,      # log(1+tf) → aşırı sık kelimeleri bask
+            max_features=3000
+        )
+        tfidf_matrix = vectorizer.fit_transform(valid_cleaned)
+        feature_names = vectorizer.get_feature_names_out()
+
+        # ─── KMeans Kümeleme ─────────────────────────────────────────────────
+        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10, max_iter=300)
+        labels = kmeans.fit_predict(tfidf_matrix)
+
+        # ─── Her Küme için Sonuç Oluştur ─────────────────────────────────────
+        clusters = []
+        for cluster_id in range(n_clusters):
+            # Bu kümedeki indexleri bul
+            cluster_indices = [i for i, lbl in enumerate(labels) if lbl == cluster_id]
+            if not cluster_indices:
+                continue
+
+            cluster_descs   = [valid_original[i] for i in cluster_indices]
+            cluster_cleaned = [valid_cleaned[i]   for i in cluster_indices]
+            cluster_ids     = [valid_ids[i]        for i in cluster_indices]
+
+            # Küme merkezine en yakın açıklamayı "temsil" olarak seç
+            cluster_vectors  = tfidf_matrix[cluster_indices]
+            center_vector    = kmeans.cluster_centers_[cluster_id]
+            similarities     = cosine_similarity(cluster_vectors, center_vector.reshape(1, -1)).flatten()
+            rep_idx          = int(similarities.argmax())
+            representative   = cluster_descs[rep_idx]
+
+            # Kümenin anahtar kelimelerini bul (merkezdeki en yüksek TF-IDF skorlular)
+            center_weights = kmeans.cluster_centers_[cluster_id]
+            top_kw_indices = center_weights.argsort()[-6:][::-1]
+            keywords = [feature_names[j] for j in top_kw_indices if center_weights[j] > 0.01]
+
+            # Örnek açıklamalar (maksimum 3, en yakın olanlar)
+            sorted_by_sim = sorted(zip(similarities, cluster_descs), reverse=True)
+            samples = [desc for _, desc in sorted_by_sim[:3]]
+
+            clusters.append({
+                "cluster_id":     cluster_id,
+                "representative": representative,
+                "keywords":       keywords,
+                "count":          len(cluster_indices),
+                "transaction_ids": cluster_ids,
+                "sample_descriptions": samples,
+            })
+
+        # Küme büyüklüğüne göre sırala (en büyük küme en üste)
+        clusters.sort(key=lambda c: c["count"], reverse=True)
+
+        return {"status": "success", "clusters": clusters}
+
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=f"Kümeleme hatası: {str(e)}")
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "engine": "Vomsis ML Engine v2"}

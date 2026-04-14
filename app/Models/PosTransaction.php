@@ -22,6 +22,6 @@ class PosTransaction extends Model
     // Bir işlemin sahip olduğu tüm etiketleri getiren ilişki
     public function tags()
     {
-        return $this->belongsToMany(Tag::class, 'pos_transaction_tag');
+        return $this->belongsToMany(Tag::class, 'transaction_tag');
     }
 }

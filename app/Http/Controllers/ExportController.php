@@ -3,69 +3,92 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Transaction;
-use App\Models\Bank;
-use App\Exports\TransactionsExport;
-use Maatwebsite\Excel\Facades\Excel;
-use Barryvdh\DomPDF\Facade\Pdf;
+use App\Models\ExportTask;
+use App\Jobs\ProcessExportJob;
+use Illuminate\Support\Facades\Storage;
 
 class ExportController extends Controller
 {
-    private function getFilteredTransactions($request)
+    /**
+     * Ortak parametre paketleme foknsiyonu
+     */
+    private function buildParams(Request $request)
     {
-        // Dashboard'daki kuryenin aynısı. Veritabanını filtreliyoruz.
-        $query = Transaction::with(['bankAccount.bank', 'transactionType']);
-
-        if ($request->filled('bank_id')) {
-            $bank = Bank::find($request->bank_id);
-            if ($bank) {
-                $query = $bank->transactions()->with(['bankAccount.bank', 'transactionType']);
-            }
-        }
-        
-        if ($request->filled('search')) {
-            $query->where('description', 'like', '%' . $request->search . '%');
-        }
-        if ($request->filled('currency')) {
-            $query->whereHas('bankAccount', function ($q) use ($request) {
-                $q->where('currency', $request->currency);
-            });
-        }
-        if ($request->filled('account_id')) {
-            $query->where('bank_account_id', $request->account_id);
-        }
-
-        return $query->orderBy('transaction_date', 'desc')->get();
+        return [
+            'bank_id'           => $request->bank_id,
+            'search'            => $request->search,
+            'currency'          => $request->currency,
+            'account_id'        => $request->account_id,
+            'separate_banks'    => $request->has('separate_banks'),
+            'separate_accounts' => $request->has('separate_accounts')
+        ];
     }
 
     public function exportExcel(Request $request)
     {
-        // 1. Filtrelenmiş veriyi çek
-        $transactions = $this->getFilteredTransactions($request);
+        $task = ExportTask::create([
+            'user_id' => auth()->id(),
+            'type'    => 'excel',
+            'status'  => 'pending',
+            'params'  => $this->buildParams($request),
+        ]);
 
-        // 2. Modaldan gelen checkbox değerlerini al (İşaretliyse true, değilse false döner)
-        $ayriBankalar = $request->has('separate_banks');
-        $ayriHesaplar = $request->has('separate_accounts');
+        ProcessExportJob::dispatch($task);
 
-        // 3. Yazdığımız Excel motorunu çalıştır ve indir
-        return Excel::download(
-            new TransactionsExport($transactions, $ayriBankalar, $ayriHesaplar), 
-            'Hesap_Hareketleri_' . date('d_m_Y') . '.xlsx'
-        );
+        return response()->json([
+            'success' => true,
+            'message' => 'Excel dışa aktarma işlemi arka planda başlatıldı.',
+            'task_id' => $task->id
+        ]);
     }
 
     public function exportPdf(Request $request)
     {
-        // 1. Veriyi çek
-        $transactions = $this->getFilteredTransactions($request);
+        $task = ExportTask::create([
+            'user_id' => auth()->id(),
+            'type'    => 'pdf',
+            'status'  => 'pending',
+            'params'  => $this->buildParams($request),
+        ]);
 
-        // 2. PDF tasarımına veriyi yolla ve resmi çek
-        $pdf = Pdf::loadView('exports.transactions', compact('transactions'));
+        ProcessExportJob::dispatch($task);
 
-        // PDF'in kağıt boyutunu A4 ve Yatay (Landscape) yap
-        $pdf->setPaper('A4', 'landscape');
+        return response()->json([
+            'success' => true,
+            'message' => 'PDF dışa aktarma işlemi arka planda başlatıldı.',
+            'task_id' => $task->id
+        ]);
+    }
 
-        // 3. İndir
-        return $pdf->download('Hesap_Hareketleri_' . date('d_m_Y') . '.pdf');
+    /**
+     * Belirli bir kullanıcının devam eden bitmiş işlemlerini kontrol eder (AJAX Poll)
+     */
+    public function checkStatus(Request $request)
+    {
+        $tasks = ExportTask::where('user_id', auth()->id())
+            ->orderBy('created_at', 'desc')
+            ->take(5) // Sadece son 5 işlemi ön yüze gönder
+            ->get();
+
+        return response()->json(['tasks' => $tasks]);
+    }
+
+    /**
+     * Biten dosyanın güvenli indirilmesi
+     */
+    public function downloadFile($id)
+    {
+        $task = ExportTask::findOrFail($id);
+        
+        // Güvenlik kontrolü (başkasının dosyasını indirmesin)
+        if ($task->user_id !== auth()->id() || $task->status !== 'completed' || !$task->file_path) {
+            abort(404, 'Dosya bulunamadı veya henüz hazır değil.');
+        }
+
+        if (!Storage::disk('public')->exists($task->file_path)) {
+            abort(404, 'Fiziksel dosya sunucuda bulunamadı.');
+        }
+
+        return Storage::disk('public')->download($task->file_path);
     }
 }

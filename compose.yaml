@@ -38,7 +38,7 @@ services:
         depends_on:
             - mysql
             - laravel.test
-        command: php /var/www/html/artisan queue:work --sleep=3 --tries=3 --timeout=90
+        command: php /var/www/html/artisan queue:work --sleep=3 --tries=3 --timeout=600
         restart: unless-stopped
 
     mysql:
@@ -73,6 +73,8 @@ services:
             dockerfile: Dockerfile
         ports:
             - "8000:8000"
+        volumes:
+            - './ml_engine:/app'
         networks:
             - sail
 
