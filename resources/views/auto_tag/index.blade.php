@@ -235,6 +235,107 @@
         </div>
     </div>
 
+    <!-- 🧠 YAPAY ZEKA VERGİ AVCISI (AI CLASSIFIER) -->
+    <div class="section" style="border: 2px solid #8b5cf6; background: #faf5ff;">
+        <div class="section-header" style="color: #6d28d9; border-bottom-color: #ddd6fe;">
+            <span><i class="fas fa-robot"></i> AI Vergi/SGK Avcısı (Yapay Zeka Taraması)</span>
+        </div>
+        <p style="font-size: 13px; color: #5b21b6; margin-top:-10px; margin-bottom: 16px;">
+            Sistem içindeki "Kesin" vergi kayıtlarınızın tutar, tarih ve açıklama örüntülerinden öğrenerek, 
+            <strong>etiketlenmemiş diğer gizli/şüpheli vergi işlemlerinizi</strong> tespit eder.
+        </p>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+            <button type="button" id="btnTrainTax" class="btn btn-primary" style="background:#6d28d9; border-color:#6d28d9;" onclick="trainTaxModel()">
+                <i class="fas fa-brain"></i> Modeli Eğit (Verilerden Öğren)
+            </button>
+            <button type="button" id="btnPredictTax" class="btn" style="background:#fff; border: 1px solid #8b5cf6; color:#6d28d9" onclick="predictTaxModel()">
+                <i class="fas fa-search-dollar"></i> Bilinmeyenleri Tarat
+            </button>
+        </div>
+
+        <!-- Yükleniyor / Sonuç Paneli -->
+        <div id="ai-loading" style="display:none; font-size:13px; color:#6d28d9; padding: 10px;">
+            <i class="fas fa-circle-notch spin"></i> Yapay Zeka analiz yapıyor, lütfen bekleyin...
+        </div>
+
+        <div id="ai-results-container" style="display:none;">
+            <div style="font-size:13px; font-weight:bold; color:#4c1d95; margin-bottom:8px;">
+                <span id="ai-found-count">0</span> adet gizli vergi işlemi tespit edildi. Onaylamak istediklerinizi seçin:
+            </div>
+            
+            <form id="aiApproveForm" onsubmit="applyAiPicks(event)">
+                <div style="max-height: 250px; overflow-y: auto; border: 1px solid #ddd6fe; border-radius: 8px; background:#fff;">
+                    <table class="table table-hover table-sm" style="margin-bottom:0; font-size:12px;">
+                        <thead style="position: sticky; top: 0; background: #f3e8ff; z-index: 1;">
+                            <tr>
+                                <th style="width:40px; text-align:center;"><input type="checkbox" id="ai-check-all" onclick="toggleAiChecks(this)"></th>
+                                <th>#ID</th>
+                                <th>Açıklama</th>
+                                <th style="text-align:right;">Tutar</th>
+                                <th style="text-align:right;">AI Özgüveni</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ai-results-tbody">
+                            <!-- JS ile dolar -->
+                        </tbody>
+                    </table>
+                </div>
+                <div style="text-align:right; margin-top:12px;">
+                    <button type="submit" id="btnApplyAi" class="btn btn-success btn-sm">
+                        <i class="fas fa-check-double"></i> Seçilenleri Etiketle
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 🤖 MULTI-CLASS YAPISAL SINIFLANDIRICI (STRUCTURAL AI) -->
+    <div class="section" style="border: 2px solid #005f73; background: #e0fbfc;">
+        <div class="section-header" style="color: #0a9396; border-bottom-color: #94d2bd;">
+            <span><i class="fas fa-network-wired"></i> Gelişmiş Yapısal Sınıflandırıcı (Metinsiz Öğrenme)</span>
+        </div>
+        <p style="font-size: 13px; color: #005f73; margin-top:-10px; margin-bottom: 16px;">
+            Hiçbir açıklama metnine ihtiyaç duymadan, yalnızca işlemlerin küsüratı, yönü ve işlem günü üzerinden 
+            <strong>Vergi, Masraf/Komisyon ve Dış Ticaret</strong> gizemlerini çözer.
+        </p>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+            <button type="button" id="btnTrainStructural" class="btn btn-primary" style="background:#005f73; border-color:#005f73;" onclick="trainStructuralModel()">
+                <i class="fas fa-cogs"></i> Modeli Çoklu Eğit (Yeni Algoritma)
+            </button>
+            <button type="button" id="btnPredictStructural" class="btn" style="background:#fff; border: 1px solid #0a9396; color:#005f73" onclick="predictStructuralModel()">
+                <i class="fas fa-satellite-dish"></i> Yapısal Taramayı Başlat
+            </button>
+        </div>
+
+        <div id="str-loading" style="display:none; font-size:13px; color:#0a9396; padding: 10px;">
+            <i class="fas fa-circle-notch spin"></i> AI yapısal analiz yapıyor, lütfen bekleyin...
+        </div>
+
+        <div id="str-results-container" style="display:none;">
+            <div style="font-size:13px; font-weight:bold; color:#005f73; margin-bottom:8px;">
+                <span id="str-found-count">0</span> adet yapısal kalıp eşleşmesi bulundu. (Öngörü tablosu)
+            </div>
+            
+            <div style="max-height: 250px; overflow-y: auto; border: 1px solid #94d2bd; border-radius: 8px; background:#fff;">
+                <table class="table table-hover table-sm" style="margin-bottom:0; font-size:12px;">
+                    <thead style="position: sticky; top: 0; background: #e9d8a6; z-index: 1;">
+                        <tr>
+                            <th>#ID</th>
+                            <th>Açıklama</th>
+                            <th style="text-align:right;">Tutar</th>
+                            <th>Önerilen Kategori</th>
+                        </tr>
+                    </thead>
+                    <tbody id="str-results-tbody">
+                        <!-- JS ile dolar -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- KURALLAR ÖZETİ -->
     <div class="form-grid" style="align-items:flex-start;">
         <div class="section" style="flex:1;">
@@ -416,6 +517,30 @@
                     </select>
                     <button type="submit" class="btn btn-primary btn-sm">Etiketle</button>
                 </form>
+
+                {{-- İşlemleri Göster / Gızle --}}
+                @php $clusterIdHash = 'c' . md5(($cluster['representative'] ?? '') . $cluster['count']); @endphp
+                <button type="button" class="btn btn-sm" 
+                    style="width:100%;margin-top:6px;border:1px solid var(--border);font-size:11px;color:var(--muted);"
+                    onclick="toggleClusterTransactions(this, {{ json_encode($cluster['transaction_ids'] ?? []) }}, '{{ $clusterIdHash }}')"
+                >
+                    📄 Bu {{ $cluster['count'] }} İşlemi Göster
+                </button>
+                <div id="cluster-txns-{{ $clusterIdHash }}" style="display:none;margin-top:8px;">
+                    <div style="overflow-x:auto;max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
+                        <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                            <thead style="position:sticky;top:0;background:var(--bg);">
+                                <tr>
+                                    <th style="padding:5px 8px;color:var(--muted);border-bottom:1px solid var(--border);text-align:left;">Tarih</th>
+                                    <th style="padding:5px 8px;color:var(--muted);border-bottom:1px solid var(--border);text-align:left;">İş Kodu</th>
+                                    <th style="padding:5px 8px;color:var(--muted);border-bottom:1px solid var(--border);text-align:left;">Açıklama</th>
+                                    <th style="padding:5px 8px;color:var(--muted);border-bottom:1px solid var(--border);text-align:right;">Tutar</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cluster-tbody-{{ $clusterIdHash }}"><tr><td colspan="4" style="text-align:center;padding:10px;color:var(--muted);">Yükleniyor...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
             @endforeach
         </div>
@@ -423,14 +548,15 @@
 </div>
 
 <script>
+// ─── Genel Değişkenler ve Sabitler ───
 const CSRF = document.querySelector('meta[name="csrf-token"]').content;
-// Mevcut URL parametrelerini koru (Filtreler için)
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const CLUSTERS_JSON_URL = "{{ route('auto-tag.clusters-json') }}";
-// Blade'den gelen tag listesini JS'e aktar
+// Blade'den gelen etiket listesini JS'e aktar (datalist ve küme formu için)
 const ALL_TAGS = @json($tags->map(fn($t) => ['id' => $t->id, 'name' => $t->name]));
 
 // ── TOAST ─────────────────────────────────────────────────────────────────────
+// Toast bildirim sistemi: mesaj, tip (s=başarılı, e=hata, i=bilgi), ve opsiyonel geri al butonu
 function toast(msg, type = 'i', undoFn = null) {
     const wrap = document.getElementById('toast-wrap');
     const el = document.createElement('div');
@@ -449,6 +575,7 @@ function toast(msg, type = 'i', undoFn = null) {
             setTimeout(() => el.remove(), 320);
         });
     }
+    // 3.5 saniye sonra otomatik kaybol
     setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 320); }, 3500);
 }
 
@@ -466,11 +593,12 @@ const QT_DEL_URL       = "{{ route('auto-tag.delete-matching') }}";
 let qtCurrentKeyword = '';
 let qtIgnoredIds = [];
 
-// API Scopes
-let filterBankId = null;
-let filterAccountId = null;
-const banksData = @json($banks);
+// ─── Filtre Yardımcıları ───
+let filterBankId = null;      // Seçili banka ID'si (null = tümü)
+let filterAccountId = null;   // Seçili hesap ID'si (null = tümü)
+const banksData = @json($banks);  // Blade'den gelen banka+hesap listesi
 
+// Aktif filtreleri query string olarak döndürür (AJAX isteklerine eklenir)
 function getFilterQueryStr() {
     let q = '';
     if (filterBankId) q += '&bank_id=' + filterBankId;
@@ -478,19 +606,21 @@ function getFilterQueryStr() {
     return q;
 }
 
+// Banka pill'ine tıklandığında: filtreyi güncelle, hesapları göster, kümeleri yenile
 function selectBank(bankId) {
     document.querySelectorAll('#bank-list .scope-pill').forEach(el => el.classList.remove('active'));
     filterAccountId = null;
 
     if (!bankId) {
-        document.querySelector('#bank-list .scope-pill').classList.add('active'); // Tümü
+        // "Tüm Bankalar" seçildi
+        document.querySelector('#bank-list .scope-pill').classList.add('active');
         filterBankId = null;
         document.getElementById('accounts-container').style.display = 'none';
     } else {
+        // Belirli bir banka seçildi: alt hesaplarını göster
         document.getElementById('bank-pill-' + bankId).classList.add('active');
         filterBankId = bankId;
         
-        // Show accounts
         const bank = banksData.find(b => b.id === bankId);
         const accList = document.getElementById('account-list');
         accList.innerHTML = `<span class="scope-pill active" onclick="selectAccount(null)">Tüm Hesaplar</span>` +
@@ -500,6 +630,7 @@ function selectBank(bankId) {
             
         document.getElementById('accounts-container').style.display = 'block';
     }
+    // Filtre değişti → kümeleri ve varsa arama sonuçlarını güncelle
     refreshClusters();
     if (qtCurrentKeyword) quickSearch();
 }
@@ -530,11 +661,12 @@ function qtIgnoreTxn(txnId) {
     if (cnt > 0) badge.textContent = cnt - 1;
 }
 
+// Anahtar kelimeyle işlem arama (AJAX GET → Controller'dan JSON döner)
 async function quickSearch(loadAll = false) {
     const kw = document.getElementById('qt-keyword').value.trim().toUpperCase();
     if (kw.length < 2) { toast('En az 2 karakter girin', 'e'); return; }
 
-    // Eğer yeni bir kelime aranıyorsa ignored listesini temizle
+    // Yeni arama yapılıyorsa hariç tutulan listesini sıfırla
     if (kw !== qtCurrentKeyword || !loadAll) {
         qtIgnoredIds = [];
     }
@@ -544,6 +676,7 @@ async function quickSearch(loadAll = false) {
     btn.textContent = '⏳ Aranıyor…'; btn.disabled = true;
 
     try {
+        // Controller'a keyword + filtreleri gönder, eşleşen işlemleri al
         const url = `${QT_PREVIEW_URL}?keyword=${encodeURIComponent(kw)}` + (loadAll ? '&limit=all' : '') + getFilterQueryStr();
         const res = await fetch(url, {
             headers: { 'Accept': 'application/json' }
@@ -588,6 +721,7 @@ async function quickSearch(loadAll = false) {
     finally { btn.textContent = '🔍 Ara'; btn.disabled = false; }
 }
 
+// Eşleşen işlemlere toplu etiket ata (AJAX POST → kural oluştur + etiketle)
 async function quickTag() {
     const kw      = qtCurrentKeyword;
     const tagName = document.getElementById('qt-tag-name').value.trim();
@@ -599,6 +733,7 @@ async function quickTag() {
     btn.textContent = '⏳ Uygulanıyor…'; btn.disabled = true;
 
     try {
+        // POST: keyword + etiket adı + hariç tutulanlar + filtreler
         const res = await fetch(QT_TAG_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
@@ -622,10 +757,12 @@ async function quickTag() {
     finally { btn.textContent = '🏷️ Etiketle'; btn.disabled = false; }
 }
 
+// Eşleşen işlemleri veritabanından sil (AJAX DELETE — onay sorulur)
 async function deleteMatching() {
     const kw = qtCurrentKeyword;
     if (!kw) { toast('Önce arama yapın', 'e'); return; }
 
+    // Kullanıcıya kaç işlem silineceğini gösterip onay al
     const count = parseInt(document.getElementById('qt-count-badge').textContent || '0');
     if (!confirm(`⚠️ "${kw}" içeren ${count} işlem silinecek. Bu işlem geri alınamaz!\n\nDevam etmek istiyor musunuz?`)) return;
 
@@ -655,6 +792,7 @@ async function deleteMatching() {
 }
 
 // ── KEYWORD PILL TIKLAMA (Sayfa yenilemeden hariç tut) ────────────────────────
+// Küme kartındaki anahtar kelimeye tıklanınca → stop-word listesine ekle (AJAX POST)
 async function excludeKeyword(pill, kw) {
     pill.classList.add('loading');
     try {
@@ -665,6 +803,7 @@ async function excludeKeyword(pill, kw) {
         });
         const data = await res.json();
         if (data.status === 'success') {
+            // Aynı kelimeyi gösteren tüm pill'leri "excluded" olarak işaretle
             document.querySelectorAll(`.kw-pill[data-kw="${kw}"]`).forEach(p => {
                 p.classList.remove('loading');
                 p.classList.add('excluded');
@@ -690,7 +829,7 @@ async function excludeKeyword(pill, kw) {
     }
 }
 
-// ── UNDO EKSKLÜZİON ──────────────────────────────────────────────────────────
+// Geri Al butonuna basılınca → stop-word'ü sil ve pill'leri tekrar aktif et
 async function undoExclusion(id, kw) {
     try {
         const res = await fetch(`{{ url('/oto-etiket/kelime-haric-tut') }}/${id}`, {
@@ -803,7 +942,7 @@ async function deleteRule(id) {
     } catch { item.classList.remove('removing'); toast('Silme hatası', 'e'); }
 }
 
-// ── RE-CLUSTERING (Exclusion değişince kümeleri sıfırdan yenile) ──────────────
+// Exclusion veya filtre değişince kümeleri Python ML servisinden yeniden çek (AJAX GET)
 async function refreshClusters() {
     const grid = document.getElementById('cluster-grid');
     if (!grid) return;
@@ -865,6 +1004,7 @@ async function refreshClusters() {
     }
 }
 
+// Küme kartının HTML'ini oluşturur (refreshClusters sonrası DOM'a basılır)
 function renderClusterCard(c, tags, excludedKws) {
     const kws = (c.keywords || []).slice(0, 6);
     const pct = c.tagged_pct ?? 0;
@@ -917,7 +1057,7 @@ function renderClusterCard(c, tags, excludedKws) {
     </div>`;
 }
 
-// ── DOM'A STOP-WORD EKLE ──────────────────────────────────────────────────────
+// Yeni eklenen stop-word'ü sayfayı yenilemeden listeye ekler
 function addExclToDOM(ex) {
     const list = document.getElementById('excl-list');
     const empty = document.getElementById('excl-empty');
@@ -929,6 +1069,283 @@ function addExclToDOM(ex) {
     el.style.animation = 'slideUp .2s ease';
     el.innerHTML = `${ex.keyword} <button class="del-btn" onclick="deleteExclusion(${ex.id}, '${ex.keyword}')">×</button>`;
     list.appendChild(el);
+}
+
+// =========================================================================
+// 🧠 AI VERGİ AVCISI FONKSİYONLARI
+// =========================================================================
+
+// Modeli Eğit (Train)
+async function trainTaxModel() {
+    const btn = document.getElementById('btnTrainTax');
+    btn.disabled = true;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner spin"></i> Eğitiliyor...';
+    
+    try {
+        const res = await fetch('{{ route("ai.tax.train") }}', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }
+        });
+        const data = await res.json();
+        
+        if(data.status === 'success') {
+            toast(`Eğitim tamamlandı! ${data.tax_samples} adet vergi işleminden öğrenildi. Doğruluk: %${data.accuracy}`, 's');
+        } else {
+            toast(data.message || 'Eğitim sırasında bir hata oluştu.', 'e');
+        }
+    } catch(e) {
+        toast('Bağlantı hatası sınıflandırma modeli erişilemiyor.', 'e');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
+    }
+}
+
+// Bilinmeyenleri Tarat (Predict)
+async function predictTaxModel() {
+    const btn = document.getElementById('btnPredictTax');
+    const loading = document.getElementById('ai-loading');
+    const container = document.getElementById('ai-results-container');
+    const tbody = document.getElementById('ai-results-tbody');
+    
+    btn.disabled = true;
+    container.style.display = 'none';
+    loading.style.display = 'block';
+    
+    try {
+        const res = await fetch('{{ route("ai.tax.predict") }}');
+        const data = await res.json();
+        
+        if(data.status === 'success') {
+            if(data.found_count === 0) {
+                toast('Şu anki kriterlere uygun etiketlenmemiş vergi işlemi bulunamadı.', 'i');
+                loading.style.display = 'none';
+                return;
+            }
+            
+            document.getElementById('ai-found-count').innerText = data.found_count;
+            tbody.innerHTML = data.predictions.map(p => `
+                <tr style="cursor:pointer;" onclick="const cb = this.querySelector('input[type=checkbox]'); cb.checked = !cb.checked;">
+                    <td style="text-align:center;"><input type="checkbox" name="ai_txns[]" value="${p.transaction_id}" onclick="event.stopPropagation()"></td>
+                    <td>#${p.transaction_id}</td>
+                    <td style="word-break:break-all; font-weight:500;">${p.description}</td>
+                    <td style="text-align:right; font-family:monospace; ${p.amount < 0 ? 'color:var(--danger)' : 'color:var(--success)'}">${Number(p.amount).toLocaleString('tr-TR', {minimumFractionDigits:2})}</td>
+                    <td style="text-align:right;">
+                        <span style="background:#f3e8ff; color:#6d28d9; padding:3px 6px; border-radius:4px; font-weight:bold;">%${p.confidence}</span>
+                    </td>
+                </tr>
+            `).join('');
+            
+            loading.style.display = 'none';
+            container.style.display = 'block';
+            toast(`${data.found_count} adet olası vergi işlemi bulundu!`, 's');
+        } else {
+            loading.style.display = 'none';
+            toast(data.message || 'Tahmin işlemi başarısız.', 'e');
+        }
+    } catch(e) {
+        loading.style.display = 'none';
+        toast('Model ile iletişim kurulamadı.', 'e');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// Tüm AI sonuçlarını seç/bırak
+function toggleAiChecks(el) {
+    const cbs = document.querySelectorAll('#ai-results-tbody input[type="checkbox"]');
+    cbs.forEach(cb => cb.checked = el.checked);
+}
+
+// Seçilen tahminleri onayla ve etiketle
+async function applyAiPicks(e) {
+    e.preventDefault();
+    const checked = document.querySelectorAll('#ai-results-tbody input[type="checkbox"]:checked');
+    if(checked.length === 0) {
+        toast('Lütfen onaylamak için en az 1 işlem seçin.', 'e');
+        return;
+    }
+    
+    const ids = Array.from(checked).map(cb => parseInt(cb.value));
+    const btn = document.getElementById('btnApplyAi');
+    const oldHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner spin"></i> Etiketleniyor...';
+    
+    try {
+        const res = await fetch('{{ route("ai.tax.apply") }}', {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ transaction_ids: ids })
+        });
+        const data = await res.json();
+        
+        if(data.status === 'success') {
+            toast(data.message, 's');
+            // Onaylananları tablodan sil
+            checked.forEach(cb => cb.closest('tr').remove());
+            
+            // Eğer tablo boşaldıysa UI'ı gizle
+            if(document.querySelectorAll('#ai-results-tbody tr').length === 0) {
+                document.getElementById('ai-results-container').style.display = 'none';
+            } else {
+                document.getElementById('ai-found-count').innerText = document.querySelectorAll('#ai-results-tbody tr').length;
+            }
+        } else {
+            toast(data.message || 'Etiketleme başarısız oldu.', 'e');
+        }
+    } catch(err) {
+        toast('Bağlantı hatası.', 'e');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
+    }
+}
+
+// 🤖 STRUCTURAL AI GÖVDE
+async function trainStructuralModel() {
+    const btn = document.getElementById('btnTrainStructural');
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner spin"></i> Modeller Kuruluyor...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch("{{ route('ai.structural.train') }}", {
+            method: 'POST',
+            headers: {'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : '{{ csrf_token() }}', 'Accept':'application/json'}
+        });
+        const data = await res.json();
+        if(data.status === 'success') {
+            toast('AI Başarıyla Eğitildi! Veri: ' + data.samples + ' | İsabet: %' + data.accuracy, 's');
+        } else {
+            toast(data.message || 'Eğitim başarısız', 'e');
+        }
+    } catch(err) {
+        toast('Bağlantı hatası.', 'e');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
+    }
+}
+
+async function predictStructuralModel() {
+    const btn = document.getElementById('btnPredictStructural');
+    const load = document.getElementById('str-loading');
+    const container = document.getElementById('str-results-container');
+    const tbody = document.getElementById('str-results-tbody');
+    const countSpan = document.getElementById('str-found-count');
+    
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner spin"></i> Gelişmiş Tarama...';
+    btn.disabled = true;
+    load.style.display = 'block';
+    container.style.display = 'none';
+
+    try {
+        const res = await fetch("{{ route('ai.structural.predict') }}", {
+            headers: {'Accept':'application/json'}
+        });
+        const data = await res.json();
+        
+        load.style.display = 'none';
+
+        if(data.status === 'success') {
+            tbody.innerHTML = '';
+            if(data.found_count === 0) {
+                toast('Yapısal kategorizasyona uygun gizli veri bulunamadı.', 'i');
+            } else {
+                countSpan.innerText = data.found_count;
+                
+                const badgeMap = {
+                    1: '<span style="background:#fecaca; color:#991b1b; padding:2px 6px; border-radius:4px; font-weight:bold;">VERGİ / SGK</span>',
+                    2: '<span style="background:#bfdbfe; color:#1e3a8a; padding:2px 6px; border-radius:4px; font-weight:bold;">MASRAF/KOMİSYON</span>',
+                    3: '<span style="background:#fef08a; color:#854d0e; padding:2px 6px; border-radius:4px; font-weight:bold;">DIŞ TİCARET</span>'
+                };
+
+                let rows = '';
+                data.predictions.forEach(p => {
+                    let amtColor = p.amount < 0 ? 'var(--danger)' : 'var(--success)';
+                    let badge = badgeMap[p.predicted_class] || 'DİĞER';
+                    let confText = '<span style="color:#0a9396; font-weight:bold;">%'+p.confidence+'</span>';
+
+                    rows += `
+                    <tr>
+                        <td style="color:#666;">#${p.transaction_id}</td>
+                        <td style="max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${p.description}">
+                            ${p.description || '-'}
+                        </td>
+                        <td style="text-align:right; color:${amtColor}; font-weight:500;">${p.amount} ₺</td>
+                        <td>${badge} (${confText})</td>
+                    </tr>`;
+                });
+                tbody.innerHTML = rows;
+                container.style.display = 'block';
+                toast(data.found_count + ' gizli veri başarıyla ayrıştırıldı.', 's');
+            }
+        } else {
+            toast(data.message || 'Tahmin işlemi başarısız', 'e');
+        }
+    } catch(err) {
+        load.style.display = 'none';
+        toast('Bağlantı hatası.', 'e');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
+    }
+}
+
+// 🔍 KÜME İŞLEM LİSTESİ AÇICI
+const _loadedClusters = new Set();
+
+async function toggleClusterTransactions(btn, txnIds, clusterHash) {
+    const container = document.getElementById('cluster-txns-' + clusterHash);
+    const tbody = document.getElementById('cluster-tbody-' + clusterHash);
+
+    if (container.style.display !== 'none') {
+        container.style.display = 'none';
+        btn.innerHTML = '📄 Bu ' + txnIds.length + ' İşlemi Göster';
+        return;
+    }
+
+    container.style.display = 'block';
+    btn.innerHTML = '🔼 Gizle';
+
+    if (_loadedClusters.has(clusterHash)) return; // zaten yüklendi
+    _loadedClusters.add(clusterHash);
+
+    try {
+        const res = await fetch("{{ route('auto-tag.cluster-transactions') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' },
+            body: JSON.stringify({ transaction_ids: txnIds })
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            if (data.transactions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:10px;color:var(--muted);">İşlem bulunamadı.</td></tr>';
+                return;
+            }
+            let rows = '';
+            data.transactions.forEach(t => {
+                const amtColor = t.amount < 0 ? 'var(--danger)' : 'var(--success)';
+                const date = t.transaction_date ? t.transaction_date.substring(0, 10) : '-';
+                const desc = (t.description || '-').substring(0, 60);
+                rows += `<tr>
+                    <td style="padding:4px 8px;border-bottom:1px solid var(--border);white-space:nowrap;">${date}</td>
+                    <td style="padding:4px 8px;border-bottom:1px solid var(--border);color:var(--muted);font-size:10px;">${t.transaction_type_code || '-'}</td>
+                    <td style="padding:4px 8px;border-bottom:1px solid var(--border);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${t.description || ''}">${desc}</td>
+                    <td style="padding:4px 8px;border-bottom:1px solid var(--border);text-align:right;color:${amtColor};font-weight:500;">${t.amount} ₺</td>
+                </tr>`;
+            });
+            tbody.innerHTML = rows;
+        } else {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--danger);">Hata: ' + (data.message || 'Bilinmiyor') + '</td></tr>';
+        }
+    } catch(e) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--danger);">Bağlantı hatası.</td></tr>';
+    }
 }
 </script>
 </body>

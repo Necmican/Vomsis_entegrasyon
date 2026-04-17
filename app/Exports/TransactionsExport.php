@@ -6,60 +6,57 @@ use Maatwebsite\Excel\Concerns\Exportable;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
 
+use App\Models\BankAccount;
+
 class TransactionsExport implements WithMultipleSheets
 {
     use Exportable;
 
-    protected $transactions;
-    protected $ayriBankalar;
-    protected $ayriHesaplar;
+    protected $baseQuery;
+    protected $params;
+    protected $task;
+    protected $totalRows;
 
-    // Controller'dan gelen verileri (işlemler ve işaretlenen kutucuklar) burada içeri alıyoruz
-    public function __construct($transactions, $ayriBankalar, $ayriHesaplar)
+    public function __construct($baseQuery, $params, $task, $totalRows)
     {
-        $this->transactions = $transactions;
-        $this->ayriBankalar = $ayriBankalar;
-        $this->ayriHesaplar = $ayriHesaplar;
+        $this->baseQuery = $baseQuery;
+        $this->params = $params;
+        $this->task = $task;
+        $this->totalRows = $totalRows > 0 ? $totalRows : 1;
     }
 
-    // Bu zorunlu fonksiyon, Excel'in altındaki "Sekmeleri (Tabları)" oluşturur
     public function sheets(): array
     {
         $sheets = [];
+        $ayriBankalar = !empty($this->params['separate_banks']);
+        $ayriHesaplar = !empty($this->params['separate_accounts']);
 
-        // 1. SENARYO: "Hesaplara Göre Ayır" seçildiyse
-        if ($this->ayriHesaplar) {
-            // İşlemleri hesap ID'sine göre grupla (Örn: 33 nolu hesabın işlemleri bir torbaya)
-            $groupedTransactions = $this->transactions->groupBy('bank_account_id');
+        if ($ayriHesaplar) {
+            $accountIds = (clone $this->baseQuery)->select('bank_account_id')->distinct()->pluck('bank_account_id');
             
-            foreach ($groupedTransactions as $accountId => $trans) {
-                // Hesap adını bul (Örn: "Hesap No: 33")
-                $accountName = $trans->first()->bankAccount->account_name ?? 'Hesap ' . $accountId;
-                // Her bir hesap için yeni bir Excel Sekmesi (Sheet) oluştur
-                $sheets[] = new TransactionSheet($trans, $accountName);
+            foreach ($accountIds as $accountId) {
+                $q = (clone $this->baseQuery)->where('bank_account_id', $accountId);
+                $accountName = BankAccount::find($accountId)->account_name ?? 'Hesap ' . $accountId;
+                $sheets[] = new TransactionSheet($q, $accountName, $this->task, $this->totalRows);
             }
         } 
-        // 2. SENARYO: "Bankalara Göre Ayır" seçildiyse
-        elseif ($this->ayriBankalar) {
-            // İşlemleri banka ID'sine göre grupla (Büyükbabanın ID'si)
-            $groupedTransactions = $this->transactions->groupBy(function($item) {
-                return $item->bankAccount->bank_id;
-            });
+        elseif ($ayriBankalar) {
+            $accountIds = (clone $this->baseQuery)->select('bank_account_id')->distinct()->pluck('bank_account_id');
+            $bankAccounts = BankAccount::with('bank')->whereIn('id', $accountIds)->get();
+            $bankIds = $bankAccounts->pluck('bank_id')->unique();
 
-            foreach ($groupedTransactions as $bankId => $trans) {
-                // Banka adını bul (Örn: "Akbank")
-                $bankName = $trans->first()->bankAccount->bank->bank_name ?? 'Banka ' . $bankId;
-                // Her bir banka için yeni bir sekme oluştur
-                $sheets[] = new TransactionSheet($trans, $bankName);
+            foreach ($bankIds as $bankId) {
+                $q = (clone $this->baseQuery)->whereHas('bankAccount', function($sq) use ($bankId) {
+                    $sq->where('bank_id', $bankId);
+                });
+                $bankName = $bankAccounts->where('bank_id', $bankId)->first()->bank->bank_name ?? 'Banka ' . $bankId;
+                $sheets[] = new TransactionSheet($q, $bankName, $this->task, $this->totalRows);
             }
         } 
-        // 3. SENARYO: Hiçbiri seçilmediyse (Hepsi tek sayfada)
         else {
-            // Bütün işlemleri "Tüm İşlemler" adında tek bir sekmeye koy
-            $sheets[] = new TransactionSheet($this->transactions, 'Tüm İşlemler');
+            $sheets[] = new TransactionSheet(clone $this->baseQuery, 'Tüm İşlemler', $this->task, $this->totalRows);
         }
 
-        // Hazırlanan sekmeleri Excel motoruna teslim et
         return $sheets;
     }
 }

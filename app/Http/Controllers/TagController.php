@@ -9,6 +9,7 @@ use App\Models\AutoTagExclusion;
 use App\Models\BankAccount;
 use App\Models\AutoTagRule;
 use Illuminate\Support\Facades\Validator;
+use App\Models\Bank;
 
 class TagController extends Controller
 {
@@ -147,11 +148,6 @@ class TagController extends Controller
     // ==========================================================================
     // HIZLI ETİKETLEME — Anahtar Kelime Arama, Etiket Oluştur+Uygula, İşlem Sil
     // ==========================================================================
-
-    /**
-     * AJAX: Anahtar kelimeyle eşleşen işlemleri önizle.
-     * GET /oto-etiket/ara?keyword=SHELL&limit=50
-     */
     public function keywordPreview(Request $request)
     {
         $keyword = strtoupper(trim($request->input('keyword', '')));
@@ -228,7 +224,7 @@ class TagController extends Controller
         );
 
         // Kuralı kaydet (Aynı banka/hesap kısıtıyla yeni kural olarak bağlanabilir)
-        $rule = \App\Models\AutoTagRule::updateOrCreate(
+        $rule = AutoTagRule::updateOrCreate(
             [
                 'keyword' => $keyword,
                 'bank_id' => $bankId,
@@ -286,10 +282,10 @@ class TagController extends Controller
     {
         $tags = Tag::orderBy('name')->get();
         // Kuralları listelerken hem genel hem özel olanları çekiyoruz
-        $rules = \App\Models\AutoTagRule::with(['tag', 'bank', 'bankAccount'])->orderByDesc('created_at')->get();
+        $rules = AutoTagRule::with(['tag', 'bank', 'bankAccount'])->orderByDesc('created_at')->get();
         $exclusions = AutoTagExclusion::orderBy('keyword')->get();
 
-        $banks = \App\Models\Bank::with('bankAccounts')->orderBy('bank_name')->get();
+        $banks = Bank::with('bankAccounts')->orderBy('bank_name')->get();
         $bankAccounts = BankAccount::orderBy('account_name')->get();
 
         $filterParams = [
@@ -360,7 +356,7 @@ class TagController extends Controller
         $clusters = [];
         $clusterError = null;
 
-        $query = \DB::table('transactions')
+        $query = \App\Models\Transaction::query()
             ->where('is_real', 1)
             ->whereNotNull('description')
             ->where('description', '!=', '')
@@ -397,7 +393,7 @@ class TagController extends Controller
                 if ($response->successful()) {
                     $rawClusters = $response->json('clusters', []);
 
-                    // Her kümeye etiketlenme sayısı ekle (N+1 önleme)
+                    // Her kümedeki işlemlerin kaçının zaten etiketli olduğunu hesapla
                     $allIds = collect($rawClusters)->flatMap(fn($c) => $c['transaction_ids'] ?? [])->unique()->toArray();
                     $taggedSet = \DB::table('transaction_tag')
                         ->whereIn('transaction_id', $allIds)
@@ -430,7 +426,7 @@ class TagController extends Controller
     /**
      * Bir kümedeki TÜM transaction_id'leri doğrudan etiketle (Kural kaydetmeden).
      */
-    public function applyCluster(\Illuminate\Http\Request $request)
+    public function applyCluster(Request $request)
     {
         $request->validate([
             'tag_id' => 'required|exists:tags,id',
@@ -444,7 +440,7 @@ class TagController extends Controller
         $txnIds = $request->transaction_ids;
         $tagId = $request->tag_id;
 
-        $transactions = \App\Models\Transaction::whereIn('id', $txnIds)->get();
+        $transactions = Transaction::whereIn('id', $txnIds)->get();
         $count = 0;
         foreach ($transactions as $txn) {
             /** @var \App\Models\Transaction $txn */
@@ -454,7 +450,7 @@ class TagController extends Controller
 
         // Eğer keyword de geldiyse kural olarak da kaydet (gelecek için)
         if ($request->filled('keyword')) {
-            \App\Models\AutoTagRule::updateOrCreate(
+            AutoTagRule::updateOrCreate(
                 [
                     'keyword' => strtoupper(trim($request->keyword)),
                     'bank_id' => $request->bank_id,
@@ -603,5 +599,296 @@ class TagController extends Controller
         }
 
         return back()->with('mesaj', '🗑️ Hariç tutulan kelime silindi.');
+    }
+
+    // =========================================================================
+    // YAPAY ZEKA (AI) VERGİ/SGK SINIFLAMASI BÖLÜMÜ
+    // =========================================================================
+
+    /**
+     * Python tarafındaki ML modelini veritabanındaki verilerle eğitir.
+     */
+    public function trainTaxClassifier(Request $request)
+    {
+        ini_set('memory_limit', '512M'); // Çok fazla veri dönme ihtimaline karşı
+
+        // Tüm gerçek verileri çekiyoruz (Limit koymuyoruz, 28 bin civarı verinin tamamı çekilecek)
+        $transactions = \DB::table('transactions')
+            ->where('is_real', 1)
+            ->whereNotNull('description')
+            ->orderBy('id', 'desc')
+            ->get(['description', 'amount', 'transaction_date']);
+
+        $descriptions = [];
+        $amounts = [];
+        $dates = [];
+        $labels = [];
+        $taxCount = 0;
+
+        foreach ($transactions as $t) {
+            $descriptions[] = $t->description;
+            $amounts[] = (float) $t->amount;
+            $dates[] = $t->transaction_date;
+            
+            // Açıklamasında İngilizce/Türkçe karakter fark etmeksizin "VERGİ" geçenler = 1
+            $descLower = mb_strtolower($t->description, 'UTF-8');
+            $isTax = (str_contains($descLower, 'vergi') || str_contains($descLower, 'vergı')) ? 1 : 0;
+            
+            $labels[] = $isTax;
+            if ($isTax) {
+                $taxCount++;
+            }
+        }
+
+        if ($taxCount < 10) {
+            return response()->json([
+                'status' => 'error', 
+                'message' => 'Sistemde açıklamasında "vergi" kelimesi geçen en az 10 işlem bulunamadı. Yapay zeka henüz karakteristiği öğrenemez.'
+            ]);
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(60)
+                ->post('http://python_ml:8000/api/train_tax_classifier', [
+                    'descriptions' => $descriptions,
+                    'amounts' => $amounts,
+                    'dates' => $dates,
+                    'is_tax' => $labels
+                ]);
+
+            if ($response->successful()) {
+                return response()->json($response->json());
+            }
+
+            return response()->json(['status' => 'error', 'message' => 'Python servisi hata döndürdü.']);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Bağlantı hatası: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Hiç etiketi olmayan işlemleri Python'a sorup "Vergi" olma ihtimali %80 üzeri olanları döndürür
+     */
+    public function predictTaxClassifier(Request $request)
+    {
+        // Hiç etiketi olmayan, ayrıca açıklamasında 'vergi' kelimesi GEÇMEYEN işlemleri al
+        $untaggedIds = \DB::table('transactions')
+            ->leftJoin('transaction_tag', 'transactions.id', '=', 'transaction_tag.transaction_id')
+            ->whereNull('transaction_tag.tag_id')
+            ->where('is_real', 1)
+            ->where(function($q) {
+                $q->where('transactions.description', 'not like', '%vergi%')
+                  ->where('transactions.description', 'not like', '%vergİ%')
+                  ->where('transactions.description', 'not like', '%VERGI%')
+                  ->where('transactions.description', 'not like', '%VERGİ%')
+                  ->where('transactions.description', 'not like', '%vergı%');
+            })
+            ->whereNotIn('transaction_type_code', ['VRM', 'TRF', 'EFT', 'HAV']) // Temel net transfer kodlarını pas geç
+            ->whereNotNull('description')
+            ->orderBy('transactions.id', 'desc')
+            ->limit(2000) // Performans için en son 2000 belirsiz işlemi tarayalım
+            ->pluck('transactions.id')
+            ->toArray();
+
+        if (empty($untaggedIds)) {
+            return response()->json(['status' => 'success', 'predictions' => [], 'found_count' => 0]);
+        }
+
+        $transactions = Transaction::whereIn('id', $untaggedIds)
+            ->get(['id', 'description', 'amount', 'transaction_date']);
+
+        $payload = [
+            'transaction_ids' => $transactions->pluck('id')->toArray(),
+            'descriptions' => $transactions->pluck('description')->toArray(),
+            'amounts' => $transactions->pluck('amount')->map(fn($a) => (float)$a)->toArray(),
+            'dates' => $transactions->pluck('transaction_date')->toArray(),
+        ];
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(60)
+                ->post('http://python_ml:8000/api/predict_tax', $payload);
+
+            if ($response->successful()) {
+                return response()->json($response->json());
+            }
+
+            return response()->json(['status' => 'error', 'message' => 'Python servisi hata döndürdü.']);
+        } catch (\Exception $e) {
+            return response()->json(['status' => 'error', 'message' => 'Bağlantı hatası: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Kullanıcının arayüzden onayladığı yapay zeka tahminlerine etiket atar.
+     */
+    public function applyTaxPredictions(Request $request)
+    {
+        $request->validate([
+            'transaction_ids' => 'required|array',
+            'transaction_ids.*' => 'integer'
+        ]);
+
+        // Özel "🤖 AI: Vergi/SGK" etiketini bul veya oluştur
+        $aiTag = Tag::firstOrCreate(
+            ['name' => '🤖 AI: Vergi/SGK'],
+            ['color' => '#8b5cf6'] // Mor renk (AI hissi)
+        );
+
+        $transactions = Transaction::whereIn('id', $request->transaction_ids)->get();
+        $count = 0;
+        foreach ($transactions as $txn) {
+            $txn->tags()->syncWithoutDetaching([$aiTag->id]);
+            $count++;
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => "$count adet işleme AI etiketi başarıyla eklendi."
+        ]);
+    }
+
+    // ========================================================================
+    // 🤖 MULTI-CLASS YAPISAL SINIFLANDIRICI (STRUCTURAL AI)
+    // ========================================================================
+
+    public function trainStructuralClassifier(Request $request)
+    {
+        ini_set('memory_limit', '512M');
+
+        // Sınıflandırma yapabileceğimiz ana verileri çekelim
+        $transactions = \DB::table('transactions')
+            ->where('is_real', 1)
+            ->whereNotNull('description')
+            ->orderBy('id', 'desc')
+            ->get(['description', 'amount', 'transaction_date', 'transaction_type_code']);
+
+        $descriptions = [];
+        $amounts = [];
+        $dates = [];
+        $codes = [];
+        $labels = [];
+
+        foreach ($transactions as $t) {
+            $descLower = mb_strtolower($t->description, 'UTF-8');
+            $amt = (float) $t->amount;
+            $code = strtoupper($t->transaction_type_code ?? '');
+            
+            // Varsayılan: 0 (Diğer)
+            $label = 0; 
+            
+            // Sınıf 1: Vergi / SGK / Yasal
+            if (str_contains($descLower, 'vergi') || str_contains($descLower, 'vergı') || in_array($code, ['VERGİ', 'TAX', 'SGK'])) {
+                $label = 1;
+            }
+            // Sınıf 2: Masraf / Komisyon / Ücret (genellikle küçük eksi tutarlar veya net komisyon kodları)
+            elseif ($amt < 0 && (in_array($code, ['CHG']) || str_contains($descLower, 'masraf') || str_contains($descLower, 'komisyon') || str_contains($descLower, 'ücret') || str_contains($descLower, 'ucret'))) {
+                $label = 2;
+            }
+            // Sınıf 3: İthalat / Dış Ticaret / Yüksek Hacimli Gider (COL, 4283 ve büyük eksi tutarlar)
+            elseif ($amt < 0 && (in_array($code, ['COL', '4283', 'FEX']) || ($amt < -50000 && str_contains($descLower, 'ithalat')))) {
+                $label = 3;
+            }
+
+            $descriptions[] = $t->description;
+            $amounts[] = $amt;
+            $dates[] = $t->transaction_date;
+            $codes[] = $code;
+            $labels[] = $label;
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(120)->post('http://python_ml:8000/api/train_structural_classifier', [
+                'descriptions' => $descriptions,
+                'amounts' => $amounts,
+                'dates' => $dates,
+                'codes' => $codes,
+                'labels' => $labels
+            ]);
+
+            return $response->json();
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Python ML servisine bağlanılamadı: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function predictStructuralClassifier(Request $request)
+    {
+        // Tür kodu belli olmayan ve etiketi olmayan işlemleri al (son 2000)
+        $untaggedIds = \DB::table('transactions')
+            ->leftJoin('transaction_tag', 'transactions.id', '=', 'transaction_tag.transaction_id')
+            ->whereNull('transaction_tag.tag_id')
+            ->where('is_real', 1)
+            ->whereNotIn('transaction_type_code', ['VRM', 'TRF', 'EFT', 'HAV']) // Temel transferleri dışla
+            ->whereNotNull('description')
+            ->orderBy('transactions.id', 'desc')
+            ->limit(2000)
+            ->pluck('transactions.id')
+            ->toArray();
+
+        if (empty($untaggedIds)) {
+            return response()->json(['status' => 'success', 'found_count' => 0, 'predictions' => []]);
+        }
+
+        // Seçilen işlemlerin detayları
+        $transactions = \DB::table('transactions')
+            ->whereIn('id', $untaggedIds)
+            ->get(['id', 'description', 'amount', 'transaction_date', 'transaction_type_code']);
+
+        $reqIds = [];
+        $descriptions = [];
+        $amounts = [];
+        $dates = [];
+        $codes = [];
+
+        foreach ($transactions as $t) {
+            $reqIds[] = $t->id;
+            $descriptions[] = $t->description;
+            $amounts[] = (float) $t->amount;
+            $dates[] = $t->transaction_date;
+            $codes[] = strtoupper($t->transaction_type_code ?? '');
+        }
+
+        try {
+            $response = \Illuminate\Support\Facades\Http::timeout(60)->post('http://python_ml:8000/api/predict_structural_classifier', [
+                'transaction_ids' => $reqIds,
+                'descriptions' => $descriptions,
+                'amounts' => $amounts,
+                'dates' => $dates,
+                'codes' => $codes
+            ]);
+
+            return $response->json();
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Python ML servisine bağlanılamadı: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ========================================================================
+    // 🔍 KÜME İŞLEM LİSTESİ (Cluster Transaction Details)
+    // ========================================================================
+    public function getClusterTransactions(Request $request)
+    {
+        $ids = $request->input('transaction_ids', []);
+        
+        if (empty($ids)) {
+            return response()->json(['status' => 'error', 'message' => 'ID listesi boş.']);
+        }
+
+        $transactions = \DB::table('transactions')
+            ->whereIn('id', $ids)
+            ->orderBy('transaction_date', 'desc')
+            ->get(['id', 'description', 'amount', 'transaction_date', 'transaction_type_code']);
+
+        return response()->json([
+            'status' => 'success',
+            'count'  => count($transactions),
+            'transactions' => $transactions
+        ]);
     }
 }

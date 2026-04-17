@@ -351,6 +351,13 @@
                     <h6 class="mb-1 fw-bold" id="exportStatusTitle" style="color: #000;">İşlem Hazırlanıyor...</h6>
                     <small class="mb-0 text-muted" id="exportStatusText">Arka planda büyük veri işleniyor. Görev bitince
                         buradan indirebilirsiniz.</small>
+                    <div id="exportProgressBarContainer" class="progress mt-2 d-none"
+                        style="height: 12px; min-width: 250px; background-color: #e9ecef; border-radius: 8px;">
+                        <div id="exportProgressBar"
+                            class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                            role="progressbar" style="width: 0%; border-radius: 8px;" aria-valuenow="0"
+                            aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
                 </div>
             </div>
             <div>
@@ -1582,13 +1589,15 @@
                 .catch(err => alert("Excel işlemi başlatılamadı!"));
         }
 
-        function showExportStatusUI(status, fileUrl = null) {
+        function showExportStatusUI(status, fileUrl = null, percentage = 0, autoDownload = true) {
             const container = document.getElementById('exportStatusContainer');
             const icon = document.getElementById('exportStatusIcon');
             const spinner = document.getElementById('exportStatusSpinner');
             const title = document.getElementById('exportStatusTitle');
             const text = document.getElementById('exportStatusText');
             const btn = document.getElementById('exportDownloadBtn');
+            const progressBarContainer = document.getElementById('exportProgressBarContainer');
+            const progressBar = document.getElementById('exportProgressBar');
 
             container.classList.remove('d-none');
 
@@ -1596,20 +1605,37 @@
                 container.style.borderLeftColor = '#0d6efd';
                 spinner.classList.remove('d-none');
                 icon.classList.add('d-none');
-                title.innerText = 'İşlem Arka Planda Hazırlanıyor...';
+                title.innerText = `İşlem Hazırlanıyor... (%${percentage})`;
                 title.style.color = '#0d6efd';
-                text.innerText = 'İşleminiz devam ediyor.';
+                text.innerText = 'Büyük veri işleniyor. Lütfen bekleyin.';
                 btn.classList.add('d-none');
+
+                progressBarContainer.classList.remove('d-none');
+                progressBar.style.width = percentage + '%';
+                progressBar.setAttribute('aria-valuenow', percentage);
+
             } else if (status === 'completed') {
                 container.style.borderLeftColor = '#198754';
                 spinner.classList.add('d-none');
                 icon.classList.remove('d-none');
                 icon.innerText = '✅';
-                title.innerText = 'Dosyanız Hazır!';
+                title.innerText = 'Dosyanız Hazır ve İndiriliyor...';
                 title.style.color = '#198754';
-                text.innerText = 'İşleminiz tamamlandı. Aşağıdaki butondan güvenle indirebilirsiniz.';
-                btn.classList.remove('d-none');
+                text.innerText = 'İşleminiz tamamlandı, otomatik olarak indirilecek ve ardından bu pencere kapanacaktır.';
+                btn.classList.remove('d-none'); // Yanında manuel buton olarak da kalsın demezsek silebiliriz
                 btn.href = fileUrl;
+                progressBarContainer.classList.add('d-none');
+
+                // 1. Otomatik olarak indirmeyi tetikle (Sadece süreç anlık izlenirken biterse)
+                if (fileUrl && autoDownload) {
+                    window.location.href = fileUrl;
+                }
+
+                // 2. Zamanlayıcı: 5 saniye sonra bilgi penceresini tamamen gizle (kapat)
+                setTimeout(() => {
+                    container.classList.add('d-none');
+                }, 5000);
+
             } else if (status === 'failed') {
                 container.style.borderLeftColor = '#dc3545';
                 spinner.classList.add('d-none');
@@ -1619,6 +1645,7 @@
                 title.style.color = '#dc3545';
                 text.innerText = 'İşlem sırasında bir hata oluştu.';
                 btn.classList.add('d-none');
+                progressBarContainer.classList.add('d-none');
             }
         }
 
@@ -1641,7 +1668,7 @@
                     const latestTask = tasks[0];
 
                     if (latestTask.status === 'completed') {
-                        showExportStatusUI('completed', `/export/download/${latestTask.id}`);
+                        showExportStatusUI('completed', `/export/download/${latestTask.id}`, 100);
                         clearInterval(exportPollInterval);
                         exportPollInterval = null;
                     } else if (latestTask.status === 'failed') {
@@ -1649,7 +1676,7 @@
                         clearInterval(exportPollInterval);
                         exportPollInterval = null;
                     } else {
-                        showExportStatusUI('processing');
+                        showExportStatusUI('processing', null, latestTask.percentage || 0);
                     }
                 });
         }
@@ -1662,12 +1689,10 @@
                     if (data.tasks && data.tasks.length > 0) {
                         const latestTask = data.tasks[0];
                         if (latestTask.status === 'pending' || latestTask.status === 'processing') {
-                            showExportStatusUI('processing');
+                            showExportStatusUI('processing', null, latestTask.percentage || 0);
                             startPollingExportStatus();
-                        } else if (latestTask.status === 'completed') {
-                            // Kullanıcı sayfayı yenilese bile "İndir" butonunu hazır tut
-                            showExportStatusUI('completed', `/export/download/${latestTask.id}`);
                         }
+
                     }
                 });
         });

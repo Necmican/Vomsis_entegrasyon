@@ -1,21 +1,90 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
     <meta charset="UTF-8">
     <title>Yapay Zeka Finansal Analiz</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f8f9fc; padding: 20px; }
-        .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
-        .filter-container { margin-bottom: 20px; background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        select { padding: 8px; border-radius: 4px; border: 1px solid #ccc; min-width: 250px; font-size: 14px; cursor: pointer; }
-        .currency-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-        .currency-tab { padding: 8px 20px; border-radius: 6px; border: 2px solid #dee2e6; background: white; font-weight: bold; cursor: pointer; font-size: 14px; transition: all 0.2s; }
-        .currency-tab.active-TL  { background: #4e73df; color: white; border-color: #4e73df; }
-        .currency-tab.active-USD { background: #1cc88a; color: white; border-color: #1cc88a; }
-        .currency-tab.active-EUR { background: #f6c23e; color: #333; border-color: #f6c23e; }
-        .chart-section { display: none; }
-        .chart-section.active { display: block; }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fc;
+            padding: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .filter-container {
+            margin-bottom: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            min-width: 250px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .currency-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .currency-tab {
+            padding: 8px 20px;
+            border-radius: 6px;
+            border: 2px solid #dee2e6;
+            background: white;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .currency-tab.active-TL {
+            background: #4e73df;
+            color: white;
+            border-color: #4e73df;
+        }
+
+        .currency-tab.active-USD {
+            background: #1cc88a;
+            color: white;
+            border-color: #1cc88a;
+        }
+
+        .currency-tab.active-EUR {
+            background: #f6c23e;
+            color: #333;
+            border-color: #f6c23e;
+        }
+
+        .chart-section {
+            display: none;
+        }
+
+        .chart-section.active {
+            display: block;
+        }
+
         .accuracy-badge {
             display: inline-block;
             padding: 3px 10px;
@@ -25,9 +94,21 @@
             margin-left: 10px;
             vertical-align: middle;
         }
-        .accuracy-high   { background: #d4edda; color: #155724; }
-        .accuracy-medium { background: #fff3cd; color: #856404; }
-        .accuracy-low    { background: #f8d7da; color: #721c24; }
+
+        .accuracy-high {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .accuracy-medium {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .accuracy-low {
+            background: #f8d7da;
+            color: #721c24;
+        }
 
         /* Grafik Katman Toggle Butonları */
         .chart-toggles {
@@ -36,6 +117,7 @@
             margin-bottom: 12px;
             flex-wrap: wrap;
         }
+
         .chart-toggle {
             display: flex;
             align-items: center;
@@ -50,61 +132,103 @@
             transition: all 0.2s ease;
             user-select: none;
         }
-        .chart-toggle:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+
+        .chart-toggle:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
         .chart-toggle .dot {
-            width: 10px; height: 10px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             transition: all 0.2s;
         }
-        .chart-toggle.active { color: white; }
-        .chart-toggle.active .dot { background: white !important; }
+
+        .chart-toggle.active {
+            color: white;
+        }
+
+        .chart-toggle.active .dot {
+            background: white !important;
+        }
 
         /* Toggle renkleri */
-        .toggle-balance.active  { background: #4e73df; border-color: #4e73df; }
-        .toggle-income.active   { background: #1cc88a; border-color: #1cc88a; }
-        .toggle-expense.active  { background: #e74a3b; border-color: #e74a3b; }
-        .toggle-forecast.active { background: #36b9cc; border-color: #36b9cc; }
+        .toggle-balance.active {
+            background: #4e73df;
+            border-color: #4e73df;
+        }
 
-        @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } .currency-tabs { flex-wrap: wrap; } }
+        .toggle-income.active {
+            background: #1cc88a;
+            border-color: #1cc88a;
+        }
+
+        .toggle-expense.active {
+            background: #e74a3b;
+            border-color: #e74a3b;
+        }
+
+        .toggle-forecast.active {
+            background: #36b9cc;
+            border-color: #36b9cc;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .currency-tabs {
+                flex-wrap: wrap;
+            }
+        }
     </style>
 </head>
+
 <body>
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h2 style="margin: 0;">📊 Yapay Zeka Finansal Analiz ve Nakit Akışı</h2>
-        <a href="{{ route('dashboard') }}" style="display: inline-flex; align-items: center; gap: 8px; background-color: #4e73df; color: white; padding: 10px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s;">
+        <a href="{{ route('dashboard') }}"
+            style="display: inline-flex; align-items: center; gap: 8px; background-color: #4e73df; color: white; padding: 10px 16px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 14px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s;">
             <span>&larr;</span> Ana Ekrana Dön
         </a>
     </div>
     @if(isset($virmanCount) && $virmanCount > 0)
-    <div style="background: #e8f4fd; border-left: 4px solid #2196F3; padding: 12px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 14px;">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-            <span style="font-size: 18px;">🔄</span>
-            <span>
-                <strong>{{ number_format($virmanCount) }}</strong> adet hesaplar arası transfer (virman) işlemi tespit edildi.
-                Gelir/gider analizinden, pasta grafiğinden ve yapay zeka tahmin modelinden <strong>çıkarılmıştır</strong>.
-            </span>
-        </div>
-        @if(!empty($virmanVolumes))
-        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-left: 28px; margin-top: 4px;">
-            @foreach($virmanVolumes as $cur => $vol)
-                @php
-                    $symbol = $cur === 'TL' ? '₺' : ($cur === 'USD' ? '$' : '€');
-                    $bgColor = $cur === 'TL' ? '#4e73df' : ($cur === 'USD' ? '#1cc88a' : '#f6c23e');
-                    $textColor = $cur === 'EUR' ? '#333' : '#fff';
-                @endphp
-                <span style="background: {{ $bgColor }}; color: {{ $textColor }}; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold;">
-                    {{ $cur }}: {{ $vol['count'] }} işlem · {{ $symbol }}{{ number_format($vol['income'], 0, ',', '.') }} giren · {{ $symbol }}{{ number_format($vol['expense'], 0, ',', '.') }} çıkan
+        <div
+            style="background: #e8f4fd; border-left: 4px solid #2196F3; padding: 12px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                <span style="font-size: 18px;">🔄</span>
+                <span>
+                    <strong>{{ number_format($virmanCount) }}</strong> adet hesaplar arası transfer (virman) işlemi tespit
+                    edildi.
+                    Gelir/gider analizinden, pasta grafiğinden ve yapay zeka tahmin modelinden
+                    <strong>çıkarılmıştır</strong>.
                 </span>
-            @endforeach
+            </div>
+            @if(!empty($virmanVolumes))
+                <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-left: 28px; margin-top: 4px;">
+                    @foreach($virmanVolumes as $cur => $vol)
+                        @php
+                            $symbol = $cur === 'TL' ? '₺' : ($cur === 'USD' ? '$' : '€');
+                            $bgColor = $cur === 'TL' ? '#4e73df' : ($cur === 'USD' ? '#1cc88a' : '#f6c23e');
+                            $textColor = $cur === 'EUR' ? '#333' : '#fff';
+                        @endphp
+                        <span
+                            style="background: {{ $bgColor }}; color: {{ $textColor }}; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold;">
+                            {{ $cur }}: {{ $vol['count'] }} işlem · {{ $symbol }}{{ number_format($vol['income'], 0, ',', '.') }}
+                            giren · {{ $symbol }}{{ number_format($vol['expense'], 0, ',', '.') }} çıkan
+                        </span>
+                    @endforeach
+                </div>
+            @endif
         </div>
-        @endif
-    </div>
     @endif
     <div class="filter-container">
         <form method="GET" action="{{ route('analytics.index') }}" id="filterForm">
             <input type="hidden" name="active_tab" id="active_tab" value="{{ request('active_tab', 'TL') }}">
-            
+
             <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
                 <div>
                     <label for="account_id" style="font-weight: bold; margin-right: 10px;">Banka Hesabı Seçin:</label>
@@ -113,21 +237,27 @@
                         @if(isset($accounts) && count($accounts) > 0)
                             @foreach($accounts as $account)
                                 <option value="{{ $account->id }}" {{ (isset($selectedAccountId) && $selectedAccountId == $account->id) ? 'selected' : '' }}>
-                                    {{ $account->bank_name ?? $account->banka_adi ?? 'Banka' }} - {{ $account->iban ?? $account->account_name ?? $account->name ?? 'Hesap ' . $account->id }}
+                                    {{ $account->bank_name ?? $account->banka_adi ?? 'Banka' }} -
+                                    {{ $account->iban ?? $account->account_name ?? $account->name ?? 'Hesap ' . $account->id }}
                                 </option>
                             @endforeach
                         @endif
                     </select>
                 </div>
-                
+
                 <div>
                     <label for="timeframe" style="font-weight: bold; margin-right: 10px;">Zaman Aralığı:</label>
                     <select name="timeframe" id="timeframe" onchange="document.getElementById('filterForm').submit()">
-                        <option value="15_days" {{ request('timeframe', '15_days') === '15_days' ? 'selected' : '' }}>Son 15 Gün</option>
-                        <option value="1_month" {{ request('timeframe') === '1_month' ? 'selected' : '' }}>Son 1 Ay</option>
-                        <option value="3_months" {{ request('timeframe') === '3_months' ? 'selected' : '' }}>Son 3 Ay</option>
-                        <option value="6_months" {{ request('timeframe') === '6_months' ? 'selected' : '' }}>Son 6 Ay</option>
-                        <option value="1_year" {{ request('timeframe') === '1_year' ? 'selected' : '' }}>Son 1 Yıl</option>
+                        <option value="15_days" {{ request('timeframe', '15_days') === '15_days' ? 'selected' : '' }}>Son
+                            15 Gün</option>
+                        <option value="1_month" {{ request('timeframe') === '1_month' ? 'selected' : '' }}>Son 1 Ay
+                        </option>
+                        <option value="3_months" {{ request('timeframe') === '3_months' ? 'selected' : '' }}>Son 3 Ay
+                        </option>
+                        <option value="6_months" {{ request('timeframe') === '6_months' ? 'selected' : '' }}>Son 6 Ay
+                        </option>
+                        <option value="1_year" {{ request('timeframe') === '1_year' ? 'selected' : '' }}>Son 1 Yıl
+                        </option>
                         <option value="all" {{ request('timeframe') === 'all' ? 'selected' : '' }}>Tüm Zamanlar</option>
                     </select>
                 </div>
@@ -148,16 +278,20 @@
             <div class="card">
                 <h3 id="chartTitle-TL">📈 TL — Nakit Akışı Tahmini (Prophet AI)</h3>
                 <div class="chart-toggles" id="toggles-TL">
-                    <button class="chart-toggle toggle-balance active" data-layer="balance" data-currency="TL" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-balance active" data-layer="balance" data-currency="TL"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#4e73df"></span> Bakiye
                     </button>
-                    <button class="chart-toggle toggle-income" data-layer="income" data-currency="TL" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-income" data-layer="income" data-currency="TL"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#1cc88a"></span> Gelir
                     </button>
-                    <button class="chart-toggle toggle-expense" data-layer="expense" data-currency="TL" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-expense" data-layer="expense" data-currency="TL"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#e74a3b"></span> Gider
                     </button>
-                    <button class="chart-toggle toggle-forecast active" data-layer="forecast" data-currency="TL" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-forecast active" data-layer="forecast" data-currency="TL"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#36b9cc"></span> AI Tahmini
                     </button>
                 </div>
@@ -184,16 +318,20 @@
             <div class="card">
                 <h3 id="chartTitle-USD">📈 USD — Nakit Akışı Tahmini</h3>
                 <div class="chart-toggles" id="toggles-USD">
-                    <button class="chart-toggle toggle-balance active" data-layer="balance" data-currency="USD" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-balance active" data-layer="balance" data-currency="USD"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#1cc88a"></span> Bakiye
                     </button>
-                    <button class="chart-toggle toggle-income" data-layer="income" data-currency="USD" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-income" data-layer="income" data-currency="USD"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#1cc88a"></span> Gelir
                     </button>
-                    <button class="chart-toggle toggle-expense" data-layer="expense" data-currency="USD" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-expense" data-layer="expense" data-currency="USD"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#e74a3b"></span> Gider
                     </button>
-                    <button class="chart-toggle toggle-forecast active" data-layer="forecast" data-currency="USD" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-forecast active" data-layer="forecast" data-currency="USD"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#36b9cc"></span> AI Tahmini
                     </button>
                 </div>
@@ -220,16 +358,20 @@
             <div class="card">
                 <h3 id="chartTitle-EUR">📈 EUR — Nakit Akışı Tahmini</h3>
                 <div class="chart-toggles" id="toggles-EUR">
-                    <button class="chart-toggle toggle-balance active" data-layer="balance" data-currency="EUR" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-balance active" data-layer="balance" data-currency="EUR"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#f6c23e"></span> Bakiye
                     </button>
-                    <button class="chart-toggle toggle-income" data-layer="income" data-currency="EUR" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-income" data-layer="income" data-currency="EUR"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#1cc88a"></span> Gelir
                     </button>
-                    <button class="chart-toggle toggle-expense" data-layer="expense" data-currency="EUR" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-expense" data-layer="expense" data-currency="EUR"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#e74a3b"></span> Gider
                     </button>
-                    <button class="chart-toggle toggle-forecast active" data-layer="forecast" data-currency="EUR" onclick="toggleLayer(this)">
+                    <button class="chart-toggle toggle-forecast active" data-layer="forecast" data-currency="EUR"
+                        onclick="toggleLayer(this)">
                         <span class="dot" style="background:#36b9cc"></span> AI Tahmini
                     </button>
                 </div>
@@ -237,7 +379,7 @@
             </div>
             <div class="card">
                 <h3> EUR — İşlem Dağılımı (Etiketlere Göre)</h3>
-                 <div class="chart-toggles" style="justify-content: center; margin-top: 10px;">
+                <div class="chart-toggles" style="justify-content: center; margin-top: 10px;">
                     <button class="chart-toggle toggle-income" onclick="togglePieLayer('EUR', 'income', this)">
                         <span class="dot" style="background:#1cc88a"></span> Gelir Dağılımı
                     </button>
@@ -253,20 +395,24 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
-        // PHP'den gelen veriler
-        const historyTL   = @json($historyTL ?? []);
-        const historyUSD  = @json($historyUSD ?? []);
-        const historyEUR  = @json($historyEUR ?? []);
-        
-        const forecastTL  = @json($forecastTL ?? []);
+        // ─── Controller'dan gelen PHP verileri JS değişkenlerine aktarılıyor ───
+        // Geçmiş bakiye/gelir/gider verileri (gün bazında)
+        const historyTL = @json($historyTL ?? []);
+        const historyUSD = @json($historyUSD ?? []);
+        const historyEUR = @json($historyEUR ?? []);
+
+        // Prophet AI'dan dönen 15 günlük tahmin verileri
+        const forecastTL = @json($forecastTL ?? []);
         const forecastUSD = @json($forecastUSD ?? []);
         const forecastEUR = @json($forecastEUR ?? []);
 
-        const accuracyTL  = @json($accuracyTL ?? null);
+        // Backtesting ile hesaplanan model doğruluk yüzdeleri
+        const accuracyTL = @json($accuracyTL ?? null);
         const accuracyUSD = @json($accuracyUSD ?? null);
         const accuracyEUR = @json($accuracyEUR ?? null);
-        
-        const tagStats    = @json($tagStats ?? []);
+
+        // Etiket bazlı gelir/gider toplamları (pasta grafiği için)
+        const tagStats = @json($tagStats ?? []);
 
         // Chart instance referansları
         const chartInstances = {};
@@ -279,13 +425,16 @@
         let activeTab = '{{ request('active_tab', 'TL') }}';
         const tabs = ['TL', 'USD', 'EUR'];
 
+        // Tıklanan kur sekmesini aktif yap, diğerlerini gizle
         function showCurrency(cur) {
+            // Tüm sekmeleri sıfırla
             tabs.forEach(c => {
                 document.getElementById('section-' + c).classList.remove('active');
                 document.querySelectorAll('.currency-tab').forEach((btn, i) => {
                     if (tabs[i] === c) btn.className = 'currency-tab';
                 });
             });
+            // Seçilen sekmeyi göster ve rengini aktif yap
             document.getElementById('section-' + cur).classList.add('active');
             const idx = tabs.indexOf(cur);
             document.querySelectorAll('.currency-tab')[idx].className = 'currency-tab active-' + cur;
@@ -320,19 +469,21 @@
         }
 
         /**
-         * Ana grafik çizici
+         * Ana çizgi+bar grafik çizici.
+         * Geçmiş bakiye (çizgi), gelir/gider (bar) ve AI tahmini (kesikli çizgi) katmanlarını oluşturur.
          */
         function drawCashFlowChart(canvasId, historyData, forecast, currency, accuracy) {
+            // Kura göre para sembolü ve renk belirleme
             const symbol = currency === 'TL' ? '₺' : (currency === 'USD' ? '$' : '€');
             const balanceColor = currency === 'TL' ? '#4e73df' : (currency === 'USD' ? '#1cc88a' : '#f6c23e');
-            const incomeColor  = '#1cc88a';
+            const incomeColor = '#1cc88a';
             const expenseColor = '#e74a3b';
             const forecastColor = '#36b9cc';
 
             const historyDates = Object.keys(historyData);
-            
+
             // Geriye uyumlu veri çıkarma
-            const historyBalances = Object.values(historyData).map(v => 
+            const historyBalances = Object.values(historyData).map(v =>
                 (typeof v === 'object' && v !== null) ? v.balance : v
             );
             const historyIncomes = Object.values(historyData).map(v =>
@@ -342,14 +493,14 @@
                 (typeof v === 'object' && v !== null) ? (v.expense || 0) : 0
             );
 
-            const forecastDates    = forecast.map(f => f.date);
+            const forecastDates = forecast.map(f => f.date);
             const forecastBalances = forecast.map(f => f.predicted_balance);
-            const forecastUpper    = forecast.map(f => f.upper_bound);
-            const forecastLower    = forecast.map(f => f.lower_bound);
+            const forecastUpper = forecast.map(f => f.upper_bound);
+            const forecastLower = forecast.map(f => f.lower_bound);
 
-            const allDates   = [...historyDates, ...forecastDates];
+            const allDates = [...historyDates, ...forecastDates];
             const pastPoints = [...historyBalances, ...Array(forecastDates.length).fill(null)];
-            
+
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
 
@@ -361,17 +512,17 @@
             }
 
             // Gelir/Gider bar verileri (sadece history bölümünde, forecast bölümü null)
-            const incomePoints  = [...historyIncomes, ...Array(forecastDates.length).fill(null)];
+            const incomePoints = [...historyIncomes, ...Array(forecastDates.length).fill(null)];
             const expensePoints = [...historyExpenses.map(v => -v), ...Array(forecastDates.length).fill(null)];
 
-            // Tahmin çizgisi
-            const lastBal      = historyBalances.length > 0 ? historyBalances[historyBalances.length - 1] : 0;
-            const nullPad      = Array(historyDates.length > 0 ? historyDates.length - 1 : 0).fill(null);
+            // Tahmin çizgisi: geçmiş verinin son noktasından başlayıp gelecek 15 güne uzanır
+            const lastBal = historyBalances.length > 0 ? historyBalances[historyBalances.length - 1] : 0;
+            const nullPad = Array(historyDates.length > 0 ? historyDates.length - 1 : 0).fill(null);
             const futurePoints = [...nullPad, lastBal, ...forecastBalances];
-            const upperPoints  = [...nullPad, lastBal, ...forecastUpper];
-            const lowerPoints  = [...nullPad, lastBal, ...forecastLower];
+            const upperPoints = [...nullPad, lastBal, ...forecastUpper];
+            const lowerPoints = [...nullPad, lastBal, ...forecastLower];
 
-            // Dataset index tracking
+            // Her dataset'in index'ini kaydet (toggle butonlarıyla açıp kapatmak için)
             let dsIdx = 0;
             const indexMap = { balance: [], income: [], expense: [], forecast: [] };
 
@@ -506,7 +657,7 @@
                     plugins: {
                         tooltip: {
                             callbacks: {
-                                label: function(context) {
+                                label: function (context) {
                                     const label = context.dataset.label || '';
                                     const value = context.parsed.y;
                                     if (value === null || value === undefined) return '';
@@ -528,16 +679,20 @@
             datasetIndexMap[currency] = indexMap;
         }
 
+        /**
+         * Pasta (doughnut) grafik çizici.
+         * Etiketlere göre gelir veya gider dağılımını görselleştirir.
+         */
         function initPieChart(canvasId, currency) {
             const canvas = document.getElementById(canvasId);
             if (!canvas) return;
 
-            // Varsayılan olarak Giderleri göster
+            // Sayfa ilk yüklendiğinde varsayılan olarak gider dağılımını göster
             let stats = [];
             if (tagStats[currency] && tagStats[currency]['expense']) {
                 stats = tagStats[currency]['expense'];
             }
-            
+
             const labels = stats.map(t => t.name);
             const values = stats.map(t => t.total);
 
@@ -548,17 +703,17 @@
                     labels: labels,
                     datasets: [{
                         data: values,
-                        backgroundColor: ['#e74a3b','#f6c23e','#36b9cc','#4e73df','#1cc88a','#858796','#fd7e14','#6f42c1'],
+                        backgroundColor: ['#e74a3b', '#f6c23e', '#36b9cc', '#4e73df', '#1cc88a', '#858796', '#fd7e14', '#6f42c1'],
                         hoverOffset: 4
                     }]
                 },
                 options: {
                     responsive: true,
-                    plugins: { 
+                    plugins: {
                         legend: { position: 'bottom' },
                         tooltip: {
                             callbacks: {
-                                label: function(context) {
+                                label: function (context) {
                                     const val = context.parsed;
                                     const symbol = currency === 'TL' ? '₺' : (currency === 'USD' ? '$' : '€');
                                     return ' ' + new Intl.NumberFormat('tr-TR').format(Math.round(val)) + ' ' + symbol;
@@ -572,6 +727,11 @@
             pieChartInstances[currency] = chart;
         }
 
+        /**
+         * Pasta grafiğinde gelir/gider geçişi.
+         * Kullanıcı "Gelir Dağılımı" veya "Gider Dağılımı" butonuna tıklayınca
+         * Chart.js datasını güncelleyerek yeni verileri çizer.
+         */
         function togglePieLayer(currency, type, btnEl) {
             const chart = pieChartInstances[currency];
             if (!chart) return;
@@ -592,8 +752,8 @@
             const values = stats.map(t => t.total);
 
             // Renk paleti ayarı (gelirler için mavi/yeşil ağırlıklı)
-            let colors = ['#e74a3b','#f6c23e','#36b9cc','#4e73df','#1cc88a','#858796','#fd7e14','#6f42c1'];
-            if(type === 'income') {
+            let colors = ['#e74a3b', '#f6c23e', '#36b9cc', '#4e73df', '#1cc88a', '#858796', '#fd7e14', '#6f42c1'];
+            if (type === 'income') {
                 colors = ['#1cc88a', '#4e73df', '#36b9cc', '#f6c23e', '#fd7e14', '#e74a3b'];
             }
 
@@ -601,20 +761,22 @@
             chart.data.labels = labels;
             chart.data.datasets[0].data = values;
             chart.data.datasets[0].backgroundColor = colors;
-            
+
             chart.update();
         }
 
-        // Grafikleri çiz
-        drawCashFlowChart('cashFlowChart-TL',  historyTL,  forecastTL,  'TL',  accuracyTL);
+        // ─── Sayfa yüklendiğinde tüm grafikleri oluştur ───
+        // Her kur için ayrı çizgi grafiği (bakiye + tahmin)
+        drawCashFlowChart('cashFlowChart-TL', historyTL, forecastTL, 'TL', accuracyTL);
         drawCashFlowChart('cashFlowChart-USD', historyUSD, forecastUSD, 'USD', accuracyUSD);
         drawCashFlowChart('cashFlowChart-EUR', historyEUR, forecastEUR, 'EUR', accuracyEUR);
 
-        // Pasta grafikleri
-        initPieChart('expensePieChart-TL',  'TL');
+        // Her kur için ayrı pasta grafiği (etiket dağılımı)
+        initPieChart('expensePieChart-TL', 'TL');
         initPieChart('expensePieChart-USD', 'USD');
         initPieChart('expensePieChart-EUR', 'EUR');
     </script>
 
 </body>
+
 </html>

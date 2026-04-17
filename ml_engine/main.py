@@ -3,11 +3,23 @@ import re
 import warnings
 import logging
 from typing import Dict, List, Optional
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from sklearn.metrics import accuracy_score
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 from prophet import Prophet
+
+# Sınıflandırma ve Veri Hazırlama (AI Tax Classifier)
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import StandardScaler
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.pipeline import Pipeline
+import joblib
+import os
 
 warnings.filterwarnings("ignore")
 logging.getLogger("prophet").setLevel(logging.WARNING)
@@ -27,13 +39,9 @@ class ForecastRequest(BaseModel):
     special_days: list[dict] = []  # Özel gün flag'leri
     days_to_predict: int = 15
 
-
+    # Her döviz adını anahtar, ForecastRequest'i değer olarak tutan bir dict şeması oluşturuyoruz
 class BatchForecastRequest(BaseModel):
     accounts: Dict[str, ForecastRequest]
-
-
-
-
 
 
 
@@ -48,6 +56,7 @@ def predict_balance(dates, balances, incomes, expenses, special_days, days_to_pr
     Gelir/gider verisi yoksa: doğrudan bakiye değişimini (delta) tahmin et.
     """
     n = len(dates)
+    # Veri çok azsa (3 günden az) tahmin yapılamaz, son bakiyeyi sabit döndür
     if n < 3:
         last = balances[-1] if balances else 0
         return {
@@ -113,6 +122,7 @@ def predict_balance(dates, balances, incomes, expenses, special_days, days_to_pr
             return None, [0.0] * periods
         
         try:
+            # Prophet algoritma parametreleri
             m = Prophet(
                 weekly_seasonality=True,
                 yearly_seasonality=len(prophet_df) > 60,
@@ -120,31 +130,45 @@ def predict_balance(dates, balances, incomes, expenses, special_days, days_to_pr
                 interval_width=0.80,
                 changepoint_prior_scale=0.05,
             )
+            # Özel gün değişkenlerini modele ekle
             for col in regressor_cols:
                 if col in prophet_df.columns:
-                    m.add_regressor(col, mode='additive')
+                    m.add_regressor(col, mode  ='additive')
+            # Modeli eğit
             m.fit(prophet_df)
-            
+            # Geçmiş + gelecek tarihlerden tahmin taslağı oluştur
             future = m.make_future_dataframe(periods=periods)
+            
+            # Gelecek tarihler için regressor değerlerini ekle
             if extra_future_regs:
                 for col, vals in extra_future_regs.items():
                     existing = train_df[col].tolist() if col in train_df.columns else [0.0] * len(train_df)
                     future[col] = (existing + vals)[:len(future)]
+
+            # Regressor yoksa mevcut değerleri taşı
             else:
                 for col in regressor_cols:
                     if col in train_df.columns:
                         existing = train_df[col].tolist()
                         future[col] = existing[:len(future)]
             
+            # Tahmin yap
             pred = m.predict(future)
+            
+            # Negatif gelir/gider olamaz, sıfırla
             yhat = [max(0, round(v, 2)) for v in pred.iloc[-periods:]['yhat'].values]
+            # m=eğitimiş model, yhat=tahmin edilen 15 günlük değerler
             return m, yhat
+        # Hata varsa çökmesin 0 dönsün
         except Exception:
             return None, [0.0] * periods
     
     # =============================================
     # STRATEJI: Gelir/Gider varsa ayrı ayrı tahmin et
+    # Gelir ve gider ayrı Prophet modelleriyle tahmin edilip
+    # bakiye kümülatif olarak hesaplanır
     # =============================================
+
     if has_income_expense:
         # --- BACKTESTING: Bakiye bazlı doğruluk hesabı ---
         # Son 15 günü ayır, modellerle bakiye tahmini yap, gerçekle kıyasla
@@ -194,7 +218,7 @@ def predict_balance(dates, balances, incomes, expenses, special_days, days_to_pr
         forecast_results = []
         cumulative = 0.0
         
-        # Güven aralığı genişliği: bakiye büyüklüğünün %1-3'ü kadar
+        # Güven aralığı genişliği: bakiye büyüklüğünün %0.5'i kadar
         base_uncertainty = abs(last_balance) * 0.005
         
         for i in range(days_to_predict):
@@ -216,7 +240,7 @@ def predict_balance(dates, balances, incomes, expenses, special_days, days_to_pr
     # =============================================
     # FALLBACK: Gelir/gider yoksa doğrudan bakiye delta tahmin et
     # =============================================
-    df['delta'] = df['balance'].diff().fillna(0)
+    df['delta'] = df['balance'].diff().fillna(0)  # Her günün bir önceki güne göre farkı
     
     # Delta backtesting
     bt_size = min(15, max(7, n // 7))
@@ -327,8 +351,6 @@ TURKISH_BANK_NAMES = {
     "burgan", "burganbank", "alternatifbank", "aktif", "aktifbank", "odea",
     "odeabank", "nurol", "nurolbank", "merkezbank", "merkez", "takasbank",
     "kuveytturk", "albaraka", "ziraat_katilim", "kuveyt", "finans",
-    # Uluslararası
-    "deutsche", "bnp", "paribas", "citibank", "citi", "jpmorgan", "rabobank",
 }
 
 # ── İşlemsel Fiiller & Kanallar (ne yapıldığı değil, KİMDEN/KİME önemli) ──
@@ -495,17 +517,17 @@ def cluster_transactions(request: ClusterRequest):
         valid_ids      = [txn_ids[i]        for i in valid_mask]
 
         # Gerçek küme sayısı: veri sayısını geçemez
-        n_clusters = min(n_clusters_req, len(valid_cleaned) // 3, 30)
+        n_clusters = min(n_clusters_req, len(valid_cleaned) // 3, 500)
         n_clusters = max(n_clusters, 2)
 
         # ─── TF-IDF Vektorizasyonu ───────────────────────────────────────────
         # ngram_range=(1,2) → hem tekli hem de ikili kelimeyi (bigram) yakalar
         vectorizer = TfidfVectorizer(
-            ngram_range=(1, 2),
-            min_df=2,               # En az 2 belgede geçmeli
-            max_df=0.85,            # Belgelerin %85'inden fazlasında geçenler genel → sil
+            ngram_range=(1, 1),
+            min_df=10,               # En az 2 belgede geçmeli
+            max_df=0.65,            # Belgelerin %85'inden fazlasında geçenler genel → sil
             sublinear_tf=True,      # log(1+tf) → aşırı sık kelimeleri bask
-            max_features=3000
+            max_features=5000
         )
         tfidf_matrix = vectorizer.fit_transform(valid_cleaned)
         feature_names = vectorizer.get_feature_names_out()
@@ -563,3 +585,265 @@ def cluster_transactions(request: ClusterRequest):
 @app.get("/health")
 def health_check():
     return {"status": "ok", "engine": "Vomsis ML Engine v3 — Prophet"}
+
+
+# =============================================================================
+# BÖLÜM 3: YAPAY ZEKA VERGİ/SGK SINIFLANDIRMASI (Text + Tabular ML)
+# =============================================================================
+TAX_MODEL_PATH = "tax_classifier_model.joblib"
+
+class TrainTaxRequest(BaseModel):
+    descriptions: list[str]
+    amounts: list[float]
+    dates: list[str]
+    is_tax: list[int]  # 1 = Vergi/SGK, 0 = Diğer
+
+class PredictTaxRequest(BaseModel):
+    transaction_ids: list[int]
+    descriptions: list[str]
+    amounts: list[float]
+    dates: list[str]
+
+@app.post("/api/train_tax_classifier")
+def train_tax_classifier(request: TrainTaxRequest):
+    """
+    Kullanıcının mevcut kesin vergi işlemlerinden (Y=1) ve diğer işlemlerinden (Y=0)
+    öğrenerek genel bir örüntü modeli eğitir ve diske kaydeder.
+    """
+    try:
+        df = pd.DataFrame({
+            "description": request.descriptions,
+            "amount": request.amounts,
+            "date": request.dates,
+            "label": request.is_tax
+        })
+
+        if len(df) < 10:
+            return {"status": "error", "message": "Eğitim için çok az veri var. Model eğitilemedi."}
+
+        # ---Özellik Çıkarımı---
+        # İşlem açıklaması boş (NULL) olan satırlar varsa kod çökmesin diye onları "boş metin" ("") ile doldurur
+        df["desc_clean"] = df["description"].fillna("").astype(str)
+        # Tutar 0'dan küçük mü? (Küçükse 1, değilse 0 değeri
+        df["is_expense"] = (df["amount"] < 0).astype(int)
+        # Mutlak değerini alır 
+        df["amount_abs"] = df["amount"].abs()
+        # işlemi ayın kaçında olduğunu bulur tarih yoksa varsayılan 15
+        df["day_of_month"] = pd.to_datetime(df["date"], errors="coerce").dt.day.fillna(15)
+        # Veriyi ikiye ayırır: X (girdiler), y (hedef)
+        X = df[["desc_clean", "amount_abs", "is_expense", "day_of_month"]]
+        y = df["label"]
+
+        # --- MULTIMODAL PIPELINE ---
+        # Metin ve sayısal verileri aynı anda işlemek için birleştirici
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ("text", TfidfVectorizer(max_features=500, ngram_range=(1, 2)), "desc_clean"),
+                # Sayısal verileri ölçeklendirir
+                ("num", StandardScaler(), ["amount_abs", "is_expense", "day_of_month"])
+            ]
+        )
+        # Randomforest classifier sınıflandırma yapar ve parametreleri belirler
+        model = Pipeline([
+            ("preprocessor", preprocessor),
+            ("classifier", RandomForestClassifier(n_estimators=100, random_state=42, class_weight="balanced"))
+        ])
+
+        # Modeli Eğit
+        model.fit(X, y)
+        #başarı scorunu bul
+        score = model.score(X, y)
+        # modelin dosyasını kaydet
+        joblib.dump(model, TAX_MODEL_PATH)
+
+        return {
+            "status": "success",
+            "message": "AI Vergi/SGK Sınıflandırma Modeli başarıyla eğitildi.",
+            "accuracy": round(score * 100, 2),
+            "total_samples": len(df),
+            "tax_samples": sum(y)
+        }
+
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/predict_tax")
+def predict_tax(request: PredictTaxRequest):
+
+    try:
+        if not os.path.exists(TAX_MODEL_PATH):
+            return {"status": "error", "message": "Model henüz eğitilmemiş."}
+
+        model = joblib.load(TAX_MODEL_PATH)
+
+        df = pd.DataFrame({
+            "id": request.transaction_ids,
+            "description": request.descriptions,
+            "amount": request.amounts,
+            "date": request.dates
+        })
+
+        if df.empty:
+            return {"status": "success", "predictions": [], "found_count": 0}
+
+        df["desc_clean"] = df["description"].fillna("").astype(str)
+        df["is_expense"] = (df["amount"] < 0).astype(int)
+        df["amount_abs"] = df["amount"].abs()
+        df["day_of_month"] = pd.to_datetime(df["date"], errors="coerce").dt.day.fillna(15)
+
+        X_new = df[["desc_clean", "amount_abs", "is_expense", "day_of_month"]]
+
+        preds = model.predict(X_new)
+        probs = model.predict_proba(X_new)[:, 1]
+
+        predictions = []
+        for i in range(len(df)):
+            if probs[i] >= 0.01: # %1 bile ihtimal varsa ekranda göster
+                predictions.append({
+                    "transaction_id": int(df.iloc[i]["id"]),
+                    "description": df.iloc[i]["description"],
+                    "amount": df.iloc[i]["amount"],
+                    "confidence": round(float(probs[i]) * 100, 1)
+                })
+
+        predictions = sorted(predictions, key=lambda x: x["confidence"], reverse=True)
+        return {"status": "success", "predictions": predictions, "found_count": len(predictions)}
+
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+# ==========================================
+# 4. YENİ: STRUCTURAL MULTI-CLASS AI (Kelimesiz Sınıflandırıcı)
+# ==========================================
+
+STRUCTURAL_MODEL_PATH = "data/models/structural_rf.pkl"
+
+class StructuralTrainRequest(BaseModel):
+    descriptions: list[str]
+    amounts: list[float]
+    dates: list[str]
+    codes: list[str]
+    labels: list[int]
+
+class StructuralPredictRequest(BaseModel):
+    transaction_ids: list[int]
+    descriptions: list[str]
+    amounts: list[float]
+    dates: list[str]
+    codes: list[str]
+
+@app.post("/api/train_structural_classifier")
+def train_structural_classifier(request: StructuralTrainRequest):
+    try:
+        df = pd.DataFrame({
+            "description": request.descriptions,
+            "amount": request.amounts,
+            "date": request.dates,
+            "code": request.codes,
+            "label": request.labels
+        })
+
+        if len(df) < 10:
+            return {"status": "error", "message": "Eğitim için yeterli veri bulunamadı."}
+
+        # == Yapısal Özellik çıkarımı ==
+        # İşaret belirleme (Eksi ise 1, Artı ise 0)
+        df["is_expense"] = (df["amount"] < 0).astype(int)
+        
+        # Tam sayı / Küsürat ayrımı (Küsüratlı ise 1, Tam sayı ise 0)
+        df["has_decimal"] = (df["amount"] % 1 != 0).astype(int)
+        
+        # Ayın kaçıncı günü
+        df["day_of_month"] = pd.to_datetime(df["date"], errors="coerce").dt.day.fillna(15)
+        
+        # Mutlak Tutar
+        df["abs_amount"] = df["amount"].abs()
+        
+        # Kategorik Tür Kodlarını Boolean Feature'lara Çevir (Veritabanındaki pikelere göre)
+        codes_upper = df["code"].fillna("").astype(str).str.upper()
+        df["is_col"] = (codes_upper == "COL").astype(int)
+        df["is_chg"] = (codes_upper == "CHG").astype(int)
+        df["is_4283"] = (codes_upper == "4283").astype(int)
+        # x girenler y çıkanlar(açıklamayı dahil etmiyoruz)
+        X = df[["is_expense", "has_decimal", "day_of_month", "abs_amount", "is_col", "is_chg", "is_4283"]]
+        y = df["label"]
+
+        # model oluştur ve çalıştır
+        model = RandomForestClassifier(n_estimators=100, random_state=42)
+        model.fit(X, y)
+        
+        # başarı skorunu bul gerçek ve tahmin edilen değerleri karşılaştır
+        preds = model.predict(X)
+        acc = accuracy_score(y, preds)
+
+        # model dosyasını kaydet
+        import os
+        os.makedirs(os.path.dirname(STRUCTURAL_MODEL_PATH), exist_ok=True)
+        joblib.dump(model, STRUCTURAL_MODEL_PATH)
+        return {"status": "success", "samples": len(df), "accuracy": round(acc * 100, 1)}
+
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/predict_structural_classifier")
+def predict_structural_classifier(request: StructuralPredictRequest):
+    try:
+        if not os.path.exists(STRUCTURAL_MODEL_PATH):
+            return {"status": "error", "message": "Yapısal Sınıflandırma modeli henüz eğitilmemiş."}
+
+        model = joblib.load(STRUCTURAL_MODEL_PATH)
+        classes = list(model.classes_)
+
+        df = pd.DataFrame({
+            "id": request.transaction_ids,
+            "description": request.descriptions,
+            "amount": request.amounts,
+            "date": request.dates,
+            "code": request.codes
+        })
+
+        if df.empty:
+            return {"status": "success", "predictions": [], "found_count": 0}
+
+        df["is_expense"] = (df["amount"] < 0).astype(int)
+        df["has_decimal"] = (df["amount"] % 1 != 0).astype(int)
+        df["day_of_month"] = pd.to_datetime(df["date"], errors="coerce").dt.day.fillna(15)
+        df["abs_amount"] = df["amount"].abs()
+        
+        codes_upper = df["code"].fillna("").astype(str).str.upper()
+        df["is_col"] = (codes_upper == "COL").astype(int)
+        df["is_chg"] = (codes_upper == "CHG").astype(int)
+        df["is_4283"] = (codes_upper == "4283").astype(int)
+
+        X_new = df[["is_expense", "has_decimal", "day_of_month", "abs_amount", "is_col", "is_chg", "is_4283"]]
+        
+        preds = model.predict(X_new)
+        probs = model.predict_proba(X_new)
+
+        predictions = []
+        for i in range(len(df)):
+            best_class = 0
+            best_conf = 0.0
+            
+            for c in [1, 2, 3]:
+                if c in classes:
+                    idx = classes.index(c)
+                    conf = probs[i][idx]
+                    if conf > best_conf:
+                        best_conf = conf
+                        best_class = c
+
+            if best_conf >= 0.01 and best_class != 0:
+                predictions.append({
+                    "transaction_id": int(df.iloc[i]["id"]),
+                    "description": df.iloc[i]["description"],
+                    "amount": df.iloc[i]["amount"],
+                    "predicted_class": int(best_class),
+                    "confidence": round(float(best_conf) * 100, 1)
+                })
+
+        predictions = sorted(predictions, key=lambda x: x["confidence"], reverse=True)
+        return {"status": "success", "predictions": predictions, "found_count": len(predictions)}
+
+    except Exception as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e))

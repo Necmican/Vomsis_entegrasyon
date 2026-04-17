@@ -65,41 +65,47 @@ class ProcessExportJob implements ShouldQueue
                 $query->where('bank_account_id', $params['account_id']);
             }
 
-            // Apply high limit to prevent memory crash but allow large export
-            $transactions = $query->orderBy('transaction_date', 'desc')->limit(50000)->get();
-            $this->exportTask->update(['total_rows' => $transactions->count()]);
+            // TOPLAM SATIR SAYISINI HESAPLA (YÜZDE HESABI İÇİN)
+            $totalRows = (clone $query)->count();
+            $this->exportTask->update(['total_rows' => $totalRows]);
 
             $filename = 'Export_' . $this->exportTask->id . '_' . date('Ymd_His');
 
+            // 1) EXCEL SÜRECİ (FROMQUERY İLE RAM ŞİŞMEDEN MİLYARLARCA SATIR İŞLENEBİLİR)
             if ($this->exportTask->type === 'excel') {
                 $filename .= '.xlsx';
                 $path = 'exports/' . $filename;
                 
-                $ayriBankalar = !empty($params['separate_banks']);
-                $ayriHesaplar = !empty($params['separate_accounts']);
-                
-                // Store on public disk (storage/app/public/exports)
                 Excel::store(
-                    new TransactionsExport($transactions, $ayriBankalar, $ayriHesaplar), 
+                    new TransactionsExport((clone $query), $params, $this->exportTask, $totalRows), 
                     $path,
                     'public'
                 );
 
-            } else {
+            } 
+            // 2) PDF SÜRECİ (GÜVENLİK SINIRI: 1000 SATIR)
+            else {
                 $filename .= '.pdf';
                 $path = 'exports/' . $filename;
                 
+                $transactions = (clone $query)->orderBy('transaction_date', 'desc')->take(1000)->get();
+                
+                // İlerleme yüzdesi PDF için çok hızlı gerçekleşeceğinden manuel başlatılır.
+                $this->exportTask->update(['percentage' => 50]);
+
                 $pdf = Pdf::loadView('exports.transactions', compact('transactions'));
                 $pdf->setPaper('A4', 'landscape');
                 
-                // Saving raw PDF byte content
                 Storage::disk('public')->put($path, $pdf->output());
+                
+                $this->exportTask->update(['percentage' => 100]);
             }
 
-            // Mark as completed
+            // İşlem Tamamen Bitti
             $this->exportTask->update([
                 'status' => 'completed',
-                'file_path' => $path
+                'file_path' => $path,
+                'percentage' => 100
             ]);
 
         } catch (\Exception $e) {

@@ -14,6 +14,7 @@ class ExportTask extends Model
         'type',
         'status',
         'total_rows',
+        'percentage',
         'params',
         'file_path',
         'error_message',

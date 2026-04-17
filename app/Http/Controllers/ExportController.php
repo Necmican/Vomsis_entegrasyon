@@ -15,11 +15,11 @@ class ExportController extends Controller
     private function buildParams(Request $request)
     {
         return [
-            'bank_id'           => $request->bank_id,
-            'search'            => $request->search,
-            'currency'          => $request->currency,
-            'account_id'        => $request->account_id,
-            'separate_banks'    => $request->has('separate_banks'),
+            'bank_id' => $request->bank_id,
+            'search' => $request->search,
+            'currency' => $request->currency,
+            'account_id' => $request->account_id,
+            'separate_banks' => $request->has('separate_banks'),
             'separate_accounts' => $request->has('separate_accounts')
         ];
     }
@@ -28,9 +28,9 @@ class ExportController extends Controller
     {
         $task = ExportTask::create([
             'user_id' => auth()->id(),
-            'type'    => 'excel',
-            'status'  => 'pending',
-            'params'  => $this->buildParams($request),
+            'type' => 'excel',
+            'status' => 'pending',
+            'params' => $this->buildParams($request),
         ]);
 
         ProcessExportJob::dispatch($task);
@@ -46,9 +46,9 @@ class ExportController extends Controller
     {
         $task = ExportTask::create([
             'user_id' => auth()->id(),
-            'type'    => 'pdf',
-            'status'  => 'pending',
-            'params'  => $this->buildParams($request),
+            'type' => 'pdf',
+            'status' => 'pending',
+            'params' => $this->buildParams($request),
         ]);
 
         ProcessExportJob::dispatch($task);
@@ -79,7 +79,7 @@ class ExportController extends Controller
     public function downloadFile($id)
     {
         $task = ExportTask::findOrFail($id);
-        
+
         // Güvenlik kontrolü (başkasının dosyasını indirmesin)
         if ($task->user_id !== auth()->id() || $task->status !== 'completed' || !$task->file_path) {
             abort(404, 'Dosya bulunamadı veya henüz hazır değil.');
