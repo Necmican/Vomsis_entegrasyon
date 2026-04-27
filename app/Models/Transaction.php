@@ -16,13 +16,19 @@ class Transaction extends Model
         'balance',
         'transaction_date',
         'transaction_type_code',
-        'is_real'
+        'is_real',
+        'is_virman',
+        'virman_confidence',
+        'virman_method',
+        'transfer_pair_id',
     ];
 
     protected $casts = [
-        'transaction_date' => 'datetime',
-        'balance' => 'decimal:2',
-        'amount' => 'decimal:2',
+        'transaction_date'  => 'datetime',
+        'balance'           => 'decimal:2',
+        'amount'            => 'decimal:2',
+        'is_virman'         => 'boolean',
+        'virman_confidence' => 'float',
     ];
 
     /**
